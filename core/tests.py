@@ -9,6 +9,7 @@ from django.db import IntegrityError, transaction
 from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from .models import (
     Appointment,
@@ -22,9 +23,12 @@ from .models import (
     MedicineBatch,
     NumberSequence,
     Patient,
+    PaymentMethod,
     Prescription,
+    PrescriptionItem,
     Service,
     StaffProfile,
+    Dispensing,
     StockMovement,
     StockReceipt,
     Supplier,
@@ -93,6 +97,28 @@ class AuthenticationLifecycleTests(TestCase):
         )
         self.assertEqual(inactive_response.status_code, 200)
         self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_repeated_failed_logins_are_throttled(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        for _ in range(5):
+            response = self.client.post(
+                reverse("login"),
+                {"username": "staff-test", "password": "wrong-password"},
+            )
+            if _ < 4:
+                self.assertEqual(response.status_code, 200)
+
+        response = self.client.post(
+            reverse("login"),
+            {"username": "staff-test", "password": "wrong-password"},
+        )
+        self.assertContains(
+            response,
+            "Too many failed login attempts",
+            status_code=429,
+        )
 
     def test_deactivated_user_session_loses_protected_access(self):
         self.client.force_login(self.user)
@@ -342,6 +368,166 @@ class HospitalBootstrapTests(TestCase):
                 content_type__model="service",
                 object_id=str(service.pk),
                 action_flag=ADDITION,
+            ).exists()
+        )
+
+
+class BillingWorkflowTests(TestCase):
+    def setUp(self):
+        call_command("bootstrap_hospital", stdout=None)
+        self.reception = get_user_model().objects.create_user(
+            username="billing-reception",
+            password="Synthetic-Password-123!",
+        )
+        self.reception.groups.add(Group.objects.get(name="Reception"))
+        StaffProfile.objects.create(
+            user=self.reception,
+            employee_id="BILL-RECEPTION-001",
+        )
+        self.patient = Patient.objects.create(
+            mrn="BILL-001",
+            full_name="Billing Patient",
+            phone="5550200",
+        )
+        self.service = Service.objects.create(
+            code="CONSULT-BILL",
+            name="Consultation Billable",
+            current_charge=Decimal("500.00"),
+        )
+        self.method = PaymentMethod.objects.create(
+            code="CASH",
+            name="Cash",
+        )
+
+    def test_reception_can_create_invoice_and_record_payment(self):
+        self.client.force_login(self.reception)
+
+        response = self.client.post(
+            reverse("invoice_create"),
+            {
+                "patient": self.patient.pk,
+                "service": self.service.pk,
+                "quantity": "1",
+                "unit_price": "500.00",
+                "description": "Consultation",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        invoice = Invoice.objects.get(patient=self.patient)
+        self.assertEqual(invoice.number, "1")
+        self.assertEqual(invoice.total, Decimal("500.00"))
+        self.assertEqual(invoice.status, Invoice.Status.ISSUED)
+
+        response = self.client.post(
+            reverse("payment_create", args=[invoice.pk]),
+            {
+                "method": self.method.pk,
+                "amount": "500.00",
+                "reference": "CASH-001",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        payment = invoice.payments.get()
+        self.assertEqual(payment.amount, Decimal("500.00"))
+        self.assertEqual(payment.reference, "CASH-001")
+
+
+class PharmacyWorkflowTests(TestCase):
+    def setUp(self):
+        call_command("bootstrap_hospital", stdout=None)
+        self.pharmacy = get_user_model().objects.create_user(
+            username="pharmacy-staff",
+            password="Synthetic-Password-123!",
+        )
+        self.pharmacy.groups.add(Group.objects.get(name="Pharmacy"))
+        self.pharmacy_profile = StaffProfile.objects.create(
+            user=self.pharmacy,
+            employee_id="PHARM-001",
+        )
+        self.supplier = Supplier.objects.create(
+            code="SUP-001",
+            name="Synthetic Supplier",
+        )
+        self.medicine = Medicine.objects.create(
+            code="MED-001",
+            generic_name="Synthetic Medicine",
+            unit="tablet",
+        )
+        self.patient = Patient.objects.create(
+            mrn="PHARM-001",
+            full_name="Pharmacy Patient",
+        )
+        self.doctor_user = get_user_model().objects.create_user(
+            username="pharmacy-doctor",
+            password="Synthetic-Password-123!",
+        )
+        self.doctor_user.groups.add(Group.objects.get(name="Doctor"))
+        self.doctor = StaffProfile.objects.create(
+            user=self.doctor_user,
+            employee_id="DOC-100",
+        )
+        self.consultation = Consultation.objects.create(
+            patient=self.patient,
+            doctor=self.doctor,
+            clinical_notes="Synthetic clinical note",
+            diagnosis="Synthetic diagnosis",
+        )
+        self.prescription = Prescription.objects.create(
+            number="RX-001",
+            consultation=self.consultation,
+            patient=self.patient,
+            doctor=self.doctor,
+            status=Prescription.Status.ISSUED,
+            issued_at=timezone.now(),
+        )
+        self.item = PrescriptionItem.objects.create(
+            prescription=self.prescription,
+            medicine=self.medicine,
+            dosage="500mg",
+            frequency="BD",
+            duration="5 days",
+            instructions="After food",
+            quantity=Decimal("10"),
+        )
+
+    def test_pharmacy_can_receive_stock_and_dispense_prescription(self):
+        self.client.force_login(self.pharmacy)
+
+        response = self.client.post(
+            reverse("stock_receipt_create"),
+            {
+                "supplier": self.supplier.pk,
+                "medicine": self.medicine.pk,
+                "batch_number": "BATCH-001",
+                "expiry_date": "2028-12-31",
+                "purchase_price": "1.00",
+                "sale_price": "2.00",
+                "quantity_received": "10",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        batch = MedicineBatch.objects.get(batch_number="BATCH-001")
+        self.assertEqual(batch.quantity_on_hand, Decimal("10"))
+
+        response = self.client.post(
+            reverse("dispense_prescription", args=[self.prescription.pk]),
+            {
+                "prescription_item": self.item.pk,
+                "batch": batch.pk,
+                "quantity": "2",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        batch.refresh_from_db()
+        self.assertEqual(batch.quantity_on_hand, Decimal("8"))
+        self.assertTrue(
+            Dispensing.objects.filter(
+                prescription=self.prescription,
+                lines__prescription_item=self.item,
             ).exists()
         )
 

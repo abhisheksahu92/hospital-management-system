@@ -1,7 +1,11 @@
+from decimal import Decimal
+
 from django.contrib.auth.decorators import permission_required
+from django.contrib.auth.views import LoginView
+from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError
-from django.http import HttpResponseBadRequest, JsonResponse
+from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
@@ -19,12 +23,58 @@ from .models import (
     Appointment,
     AuditEvent,
     Consultation,
+    Dispensing,
+    DispensingLine,
     HospitalSettings,
+    Invoice,
+    InvoiceLine,
+    Medicine,
+    MedicineBatch,
     Patient,
+    Payment,
+    PaymentMethod,
     Prescription,
+    PrescriptionItem,
+    Service,
     StaffProfile,
+    StockMovement,
+    StockReceipt,
+    Supplier,
 )
 from .services.numbering import next_number
+
+
+def _login_throttle_key(request, username):
+    return f"login-fail:{request.META.get('REMOTE_ADDR', 'unknown')}:{(username or '').strip().lower()}"
+
+
+class HospitalLoginView(LoginView):
+    def dispatch(self, request, *args, **kwargs):
+        username = (request.POST.get("username", "") or "").strip().lower()
+        if request.method == "POST" and cache.get(_login_throttle_key(request, username), 0) >= 5:
+            response = HttpResponse(
+                "Too many failed login attempts. Please wait a few minutes and try again.",
+                status=429,
+            )
+            return response
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_invalid(self, form):
+        username = (self.request.POST.get("username", "") or "").strip().lower()
+        key = _login_throttle_key(self.request, username)
+        attempts = cache.get(key, 0) + 1
+        cache.set(key, attempts, timeout=600)
+        if attempts >= 5:
+            return HttpResponse(
+                "Too many failed login attempts. Please wait a few minutes and try again.",
+                status=429,
+            )
+        return super().form_invalid(form)
+
+    def form_valid(self, form):
+        username = (self.request.POST.get("username", "") or "").strip().lower()
+        cache.delete(_login_throttle_key(self.request, username))
+        return super().form_valid(form)
 
 
 def home(request):
@@ -54,6 +104,71 @@ def _patient_read_queryset(user):
     if _has_role(user, "Doctor"):
         return doctor_patient_queryset(user).filter(archived_at__isnull=True)
     raise PermissionDenied
+
+
+@permission_required("core.add_invoice", raise_exception=True)
+def invoice_create(request):
+    if (
+        not _has_role(request.user, "Reception")
+        or not StaffProfile.objects.filter(user=request.user).exists()
+    ):
+        raise PermissionDenied
+
+    patient = get_object_or_404(
+        Patient.objects.filter(archived_at__isnull=True),
+        pk=request.POST.get("patient"),
+    )
+    service = get_object_or_404(Service, pk=request.POST.get("service"))
+    quantity = Decimal(request.POST.get("quantity", "1"))
+    unit_price = Decimal(request.POST.get("unit_price", service.current_charge or 0))
+    description = request.POST.get("description", service.name).strip() or service.name
+    line_total = quantity * unit_price
+
+    invoice = Invoice.objects.create(
+        number=next_number("INVOICE"),
+        patient=patient,
+        status=Invoice.Status.ISSUED,
+        subtotal=line_total,
+        total=line_total,
+        issued_at=timezone.now(),
+        created_by=StaffProfile.objects.get(user=request.user),
+    )
+    InvoiceLine.objects.create(
+        invoice=invoice,
+        service=service,
+        description=description,
+        quantity=quantity,
+        unit_price=unit_price,
+        discount_amount=Decimal("0.00"),
+        line_total=line_total,
+    )
+    return redirect("patient_detail", pk=patient.pk)
+
+
+@permission_required("core.add_payment", raise_exception=True)
+def payment_create(request, pk):
+    if (
+        not _has_role(request.user, "Reception")
+        or not StaffProfile.objects.filter(user=request.user).exists()
+    ):
+        raise PermissionDenied
+
+    invoice = get_object_or_404(Invoice, pk=pk)
+    method = get_object_or_404(PaymentMethod, pk=request.POST.get("method"))
+    amount = Decimal(request.POST.get("amount", "0"))
+    if amount <= 0:
+        raise PermissionDenied
+
+    Payment.objects.create(
+        receipt_number=next_number("RECEIPT"),
+        invoice=invoice,
+        method=method,
+        amount=amount,
+        reference=request.POST.get("reference", "").strip(),
+        received_by=StaffProfile.objects.get(user=request.user),
+        received_at=timezone.now(),
+    )
+    return redirect("patient_detail", pk=invoice.patient_id)
 
 
 def _audit_patient_change(request, patient, action, changed_fields):
@@ -490,6 +605,110 @@ def prescription_print(request, pk):
             "items": prescription.items.select_related("medicine"),
         },
     )
+
+
+@permission_required("core.add_stockreceipt", raise_exception=True)
+def stock_receipt_create(request):
+    if not _has_role(request.user, "Pharmacy"):
+        raise PermissionDenied
+    if request.method != "POST":
+        return HttpResponseBadRequest("Stock receipts require POST.")
+
+    supplier = get_object_or_404(Supplier, pk=request.POST.get("supplier"))
+    medicine = get_object_or_404(Medicine, pk=request.POST.get("medicine"))
+    quantity_received = Decimal(request.POST.get("quantity_received", "0"))
+    if quantity_received <= 0:
+        return HttpResponseBadRequest("Quantity received must be positive.")
+
+    expiry_date = request.POST.get("expiry_date")
+    if not expiry_date:
+        return HttpResponseBadRequest("Expiry date is required.")
+
+    receipt = StockReceipt.objects.create(
+        number=next_number("STOCK_RECEIPT"),
+        supplier=supplier,
+        received_at=timezone.now(),
+        received_by=StaffProfile.objects.get(user=request.user),
+    )
+    batch = MedicineBatch.objects.create(
+        medicine=medicine,
+        receipt=receipt,
+        batch_number=request.POST.get("batch_number", "").strip() or "BATCH-UNKNOWN",
+        expiry_date=expiry_date,
+        purchase_price=Decimal(request.POST.get("purchase_price", "0.00")),
+        sale_price=Decimal(request.POST.get("sale_price", "0.00")),
+        quantity_received=quantity_received,
+        quantity_on_hand=quantity_received,
+    )
+    StockMovement.objects.create(
+        batch=batch,
+        kind=StockMovement.Kind.RECEIPT,
+        quantity_delta=quantity_received,
+        quantity_before=Decimal("0"),
+        quantity_after=quantity_received,
+        reference_type="stock_receipt",
+        reference_id=str(receipt.pk),
+        actor=StaffProfile.objects.get(user=request.user),
+    )
+    return redirect("pharmacy_prescription_list")
+
+
+@permission_required("core.add_dispensing", raise_exception=True)
+def dispense_prescription(request, prescription_id):
+    if not _has_role(request.user, "Pharmacy"):
+        raise PermissionDenied
+    if request.method != "POST":
+        return HttpResponseBadRequest("Dispensing requires POST.")
+
+    prescription = get_object_or_404(
+        Prescription.objects.filter(status=Prescription.Status.ISSUED),
+        pk=prescription_id,
+    )
+    item = get_object_or_404(
+        PrescriptionItem.objects.filter(prescription=prescription),
+        pk=request.POST.get("prescription_item"),
+    )
+    batch = get_object_or_404(
+        MedicineBatch.objects.filter(medicine=item.medicine),
+        pk=request.POST.get("batch"),
+    )
+    quantity = Decimal(request.POST.get("quantity", "0"))
+    if quantity <= 0:
+        return HttpResponseBadRequest("Dispensed quantity must be positive.")
+    if quantity > item.quantity:
+        return HttpResponseBadRequest("Dispensed quantity exceeds the prescription amount.")
+    if batch.quantity_on_hand < quantity:
+        return HttpResponseBadRequest("Insufficient stock available for this batch.")
+
+    dispensing = Dispensing.objects.create(
+        number=next_number("DISPENSING"),
+        prescription=prescription,
+        patient=prescription.patient,
+        dispensed_by=StaffProfile.objects.get(user=request.user),
+        status=Dispensing.Status.COMPLETED,
+        dispensed_at=timezone.now(),
+    )
+    DispensingLine.objects.create(
+        dispensing=dispensing,
+        prescription_item=item,
+        batch=batch,
+        quantity=quantity,
+        unit_price=batch.sale_price,
+    )
+    before = batch.quantity_on_hand
+    batch.quantity_on_hand = before - quantity
+    batch.save(update_fields=("quantity_on_hand", "updated_at"))
+    StockMovement.objects.create(
+        batch=batch,
+        kind=StockMovement.Kind.DISPENSE,
+        quantity_delta=-quantity,
+        quantity_before=before,
+        quantity_after=before - quantity,
+        reference_type="dispensing",
+        reference_id=str(dispensing.pk),
+        actor=StaffProfile.objects.get(user=request.user),
+    )
+    return redirect("pharmacy_prescription_list")
 
 
 @permission_required("core.view_prescription", raise_exception=True)

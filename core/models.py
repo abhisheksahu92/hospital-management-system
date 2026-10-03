@@ -611,6 +611,7 @@ class InvoiceLine(models.Model):
 
 
 class Payment(TimestampedModel):
+    receipt_number = models.CharField(max_length=40, unique=True)
     invoice = models.ForeignKey(
         Invoice, on_delete=models.PROTECT, related_name="payments"
     )
