@@ -655,7 +655,9 @@ def patient_create(request):
                 _audit_patient_change(
                     request, patient, "patient.created", form.changed_data
                 )
-            messages.success(request, f"Patient {patient.full_name} registered successfully.")
+            messages.success(
+                request, f"Patient {patient.full_name} registered successfully."
+            )
             return redirect("patient_detail", pk=patient.pk)
 
     return render(

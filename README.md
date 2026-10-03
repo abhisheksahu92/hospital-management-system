@@ -5,9 +5,10 @@ uses Django templates and the Django ORM; it does not connect to Supabase.
 
 ## Development setup
 
-Requirements: Python 3.12 or newer and pip. PostgreSQL is optional for local
-smoke testing; SQLite is used by default. To use PostgreSQL, set `DATABASE_URL`
-in `.env`.
+Requirements: Python 3.12 or newer and pip. PostgreSQL is the target environment
+for staging and production. For local development convenience, SQLite is used by
+default if `DATABASE_URL` is omitted. To run against PostgreSQL locally or in CI,
+set `DATABASE_URL` in `.env`.
 
 ```sh
 python3 -m venv .venv

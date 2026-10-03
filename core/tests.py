@@ -2200,4 +2200,3 @@ class ClinicalWorkflowTests(TestCase):
             follow=True,
         )
         self.assertContains(resp, "Consultation saved successfully")
-
