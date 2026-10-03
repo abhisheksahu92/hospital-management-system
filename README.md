@@ -72,13 +72,15 @@ rate-limit failures; configure and verify edge-level login rate limiting under
 KAN-16 before staging accounts are used. See [docs/security.md](docs/security.md).
 
 After creating the initial administrator, run `python manage.py bootstrap_hospital`
-to create the singleton hospital settings placeholder, four empty role groups,
+to create the singleton hospital settings placeholder, four curated role groups,
 and document-number sequences. Replace the placeholder hospital name and review
-group permissions before staff onboarding. Run the command again safely after
-deployment or restore; it does not create users or assign permissions. Configure
+the managed permissions before staff onboarding. Rerunning the command safely
+reapplies code-defined role permissions; change `core/roles.py` rather than
+editing those permissions manually. It does not create users. Configure
 departments, visit types, services, payment methods, suppliers, and medicines in
-Django Admin. Tax, discount, refund, and pharmacy pricing policies remain subject
-to the open decisions in `docs/decisions.md`.
+Django Admin. See [docs/roles-and-permissions.md](docs/roles-and-permissions.md).
+Tax, discount, refund, and pharmacy pricing policies remain subject to the open
+decisions in `docs/decisions.md`.
 
 ## Supabase
 
