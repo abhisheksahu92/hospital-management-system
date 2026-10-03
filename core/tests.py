@@ -12,6 +12,7 @@ from django.urls import reverse
 
 from .models import (
     Appointment,
+    AuditEvent,
     Department,
     HospitalSettings,
     Invoice,
@@ -28,6 +29,7 @@ from .models import (
     VisitType,
 )
 from .authorization import doctor_patient_queryset
+from .forms import PatientForm
 from .services.numbering import next_number
 
 
@@ -451,3 +453,196 @@ class RolePermissionTests(TestCase):
         created = get_user_model().objects.get(username="attempted-superuser")
         self.assertFalse(created.is_superuser)
         self.assertFalse(created.user_permissions.exists())
+
+
+class PatientWorkflowTests(TestCase):
+    def setUp(self):
+        call_command("bootstrap_hospital", stdout=None)
+        self.reception = get_user_model().objects.create_user(
+            username="patient-reception", password="Synthetic-Password-123!"
+        )
+        self.reception.groups.add(Group.objects.get(name="Reception"))
+        StaffProfile.objects.create(
+            user=self.reception, employee_id="PAT-RECEPTION-001"
+        )
+
+    def test_reception_can_register_with_generated_identifier(self):
+        self.client.force_login(self.reception)
+
+        response = self.client.post(
+            reverse("patient_create"),
+            {
+                "full_name": "Synthetic Patient One",
+                "date_of_birth": "1990-01-02",
+                "phone": "5550100",
+                "address": "Synthetic Address",
+                "emergency_contact_name": "Synthetic Contact",
+                "emergency_contact_phone": "5550101",
+                "allergy_safety_notes": "must not be accepted from reception",
+            },
+        )
+
+        patient = Patient.objects.get(full_name="Synthetic Patient One")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(patient.mrn, "1")
+        self.assertEqual(patient.allergy_safety_notes, "")
+        event = AuditEvent.objects.get(
+            action="patient.created", target_id=str(patient.pk)
+        )
+        self.assertEqual(event.actor, self.reception.staff_profile)
+        self.assertIn("full_name", event.details["changed_fields"])
+        self.assertNotIn("Synthetic Patient One", str(event.details))
+
+    def test_exact_name_and_phone_duplicate_warns_but_never_merges(self):
+        existing = Patient.objects.create(
+            mrn="EXISTING-001", full_name="Synthetic Patient", phone="5550110"
+        )
+        self.client.force_login(self.reception)
+        data = {
+            "full_name": "Synthetic Patient",
+            "phone": "5550110",
+            "address": "",
+            "emergency_contact_name": "",
+            "emergency_contact_phone": "",
+        }
+
+        warning = self.client.post(reverse("patient_create"), data)
+        self.assertEqual(warning.status_code, 200)
+        self.assertContains(warning, "Possible duplicate patient")
+        self.assertEqual(Patient.objects.count(), 1)
+
+        data["confirm_duplicate"] = "yes"
+        created = self.client.post(reverse("patient_create"), data)
+        self.assertEqual(created.status_code, 302)
+        self.assertEqual(Patient.objects.count(), 2)
+        existing.refresh_from_db()
+        self.assertEqual(existing.mrn, "EXISTING-001")
+
+    def test_search_matches_patient_identifier_name_and_phone(self):
+        patient = Patient.objects.create(
+            mrn="SEARCH-001", full_name="Synthetic Search Patient", phone="5550123"
+        )
+        self.client.force_login(self.reception)
+
+        for query in ("SEARCH-001", "Search Patient", "5550123"):
+            with self.subTest(query=query):
+                response = self.client.get(reverse("patient_list"), {"q": query})
+                self.assertContains(response, patient.mrn)
+
+    def test_reception_can_update_demographics_but_not_safety_notes(self):
+        patient = Patient.objects.create(
+            mrn="EDIT-001",
+            full_name="Original Name",
+            phone="5550130",
+            allergy_safety_notes="Synthetic confidential note",
+        )
+        self.client.force_login(self.reception)
+
+        response = self.client.post(
+            reverse("patient_update", args=[patient.pk]),
+            {
+                "full_name": "Updated Name",
+                "phone": "5550131",
+                "address": "Updated Synthetic Address",
+                "emergency_contact_name": "",
+                "emergency_contact_phone": "",
+                "allergy_safety_notes": "Unauthorized change",
+            },
+        )
+
+        patient.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(patient.full_name, "Updated Name")
+        self.assertEqual(patient.allergy_safety_notes, "Synthetic confidential note")
+        detail = self.client.get(reverse("patient_detail", args=[patient.pk]))
+        self.assertNotContains(detail, "Synthetic confidential note")
+        event = AuditEvent.objects.get(
+            action="patient.demographics_updated", target_id=str(patient.pk)
+        )
+        self.assertEqual(event.actor, self.reception.staff_profile)
+        self.assertIn("full_name", event.details["changed_fields"])
+        self.assertNotIn("Updated Name", str(event.details))
+
+    def test_future_date_of_birth_is_rejected(self):
+        form = PatientForm(
+            data={
+                "full_name": "Synthetic Patient",
+                "date_of_birth": "2999-01-01",
+                "phone": "",
+                "address": "",
+                "emergency_contact_name": "",
+                "emergency_contact_phone": "",
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("date_of_birth", form.errors)
+
+    def test_doctor_can_only_open_assigned_patient_and_cannot_edit(self):
+        department = Department.objects.create(code="PAT-DOC", name="Synthetic Dept")
+        doctor = get_user_model().objects.create_user(
+            username="patient-doctor", password="Synthetic-Password-123!"
+        )
+        doctor.groups.add(Group.objects.get(name="Doctor"))
+        doctor_profile = StaffProfile.objects.create(
+            user=doctor, employee_id="PAT-DOC-001", department=department
+        )
+        other_doctor = get_user_model().objects.create_user(
+            username="patient-other-doctor"
+        )
+        other_profile = StaffProfile.objects.create(
+            user=other_doctor, employee_id="PAT-DOC-002", department=department
+        )
+        visit_type = VisitType.objects.create(code="PAT-VISIT", name="Patient Visit")
+        assigned = Patient.objects.create(mrn="ASSIGNED-001", full_name="Assigned")
+        unrelated = Patient.objects.create(mrn="UNRELATED-001", full_name="Unrelated")
+        Appointment.objects.create(
+            patient=assigned,
+            doctor=doctor_profile,
+            visit_type=visit_type,
+            scheduled_at="2026-12-02T09:00:00Z",
+        )
+        Appointment.objects.create(
+            patient=unrelated,
+            doctor=other_profile,
+            visit_type=visit_type,
+            scheduled_at="2026-12-02T10:00:00Z",
+        )
+        self.client.force_login(doctor)
+
+        self.assertEqual(
+            self.client.get(reverse("patient_detail", args=[assigned.pk])).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.client.get(reverse("patient_detail", args=[unrelated.pk])).status_code,
+            404,
+        )
+        self.assertEqual(
+            self.client.post(reverse("patient_update", args=[assigned.pk])).status_code,
+            403,
+        )
+
+    def test_pharmacy_and_administrator_cannot_open_patient_directory(self):
+        for role in ("Pharmacy", "Administrator"):
+            user = get_user_model().objects.create_user(
+                username=f"patient-{role.lower()}", password="Synthetic-Password-123!"
+            )
+            user.groups.add(Group.objects.get(name=role))
+            self.client.force_login(user)
+            with self.subTest(role=role):
+                self.assertEqual(
+                    self.client.get(reverse("patient_list")).status_code, 403
+                )
+                self.assertEqual(
+                    self.client.post(reverse("patient_create")).status_code, 403
+                )
+
+    def test_patient_data_is_not_permanently_deletable_through_ui(self):
+        patient = Patient.objects.create(mrn="KEEP-001", full_name="Keep Record")
+        self.client.force_login(self.reception)
+
+        response = self.client.post(f"/patients/{patient.pk}/delete/")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(Patient.objects.filter(pk=patient.pk).exists())

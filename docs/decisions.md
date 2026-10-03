@@ -15,6 +15,11 @@ tests, or development.
 	permissions, archival behavior, and whether any patient data may be permanently
 	deleted.
 
+KAN-9 uses a provisional duplicate warning for exact case-insensitive full name
+and exact non-empty phone matches. It does not auto-merge or block registration;
+Reception must review candidates and can explicitly continue as a separate
+record. This heuristic and the patient-field set require owner confirmation.
+
 ## Appointment and queue policy
 
 - Approve visit types, appointment statuses, lifecycle transitions, and which
@@ -79,8 +84,9 @@ hospital data is exposed to it.
 ## KAN-20 bootstrap boundary
 
 The reproducible `bootstrap_hospital` command creates the singleton settings row
-with a placeholder name, four empty Django role groups, and named sequence rows.
-It does not create a default administrator or assign permissions. The operator
+with a placeholder name, four Django role groups with code-defined permissions,
+and named sequence rows. It does not create a default administrator. The operator
 must run `createsuperuser`, replace the hospital placeholder, and review group
-permissions before onboarding staff. Named group permissions are defined by
-KAN-4; unapproved finance/tax rules and number formatting remain unset.
+permissions before onboarding staff. Rerunning the command reapplies each
+role's permission set from `core/roles.py`. Unapproved finance/tax rules and
+number formatting remain unset.

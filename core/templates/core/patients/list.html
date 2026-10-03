@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Patients | Hospital Management System</title>
+  </head>
+  <body>
+    <main>
+      <h1>Patients</h1>
+      <form method="get" role="search">
+        <label for="patient-query">Search by patient ID, name, or phone</label>
+        <input id="patient-query" name="q" value="{{ query }}" type="search">
+        <button type="submit">Search</button>
+      </form>
+      {% if can_register %}<p><a href="{% url 'patient_create' %}">Register patient</a></p>{% endif %}
+      <table>
+        <thead>
+          <tr><th>Patient ID</th><th>Name</th><th>Date of birth</th><th>Phone</th></tr>
+        </thead>
+        <tbody>
+          {% for patient in patients %}
+            <tr>
+              <td><a href="{% url 'patient_detail' patient.pk %}">{{ patient.mrn }}</a></td>
+              <td>{{ patient.full_name }}</td>
+              <td>{{ patient.date_of_birth|default:"Not recorded" }}</td>
+              <td>{{ patient.phone|default:"Not recorded" }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="4">No matching patients.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </main>
+  </body>
+</html>

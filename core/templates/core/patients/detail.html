@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ patient.mrn }} | Hospital Management System</title>
+  </head>
+  <body>
+    <main>
+      <h1>{{ patient.full_name }}</h1>
+      <dl>
+        <dt>Patient ID</dt><dd>{{ patient.mrn }}</dd>
+        <dt>Date of birth</dt><dd>{{ patient.date_of_birth|default:"Not recorded" }}</dd>
+        <dt>Phone</dt><dd>{{ patient.phone|default:"Not recorded" }}</dd>
+        <dt>Address</dt><dd>{{ patient.address|default:"Not recorded" }}</dd>
+        <dt>Emergency contact</dt><dd>{{ patient.emergency_contact_name|default:"Not recorded" }} {{ patient.emergency_contact_phone }}</dd>
+      </dl>
+      {% if can_edit %}<p><a href="{% url 'patient_update' patient.pk %}">Update demographics</a></p>{% endif %}
+      <p><a href="{% url 'patient_list' %}">Back to patients</a></p>
+    </main>
+  </body>
+</html>
