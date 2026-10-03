@@ -3,14 +3,16 @@ import re
 
 from django.contrib.admin.models import ADDITION, LogEntry
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.core import mail
 from django.db import IntegrityError, transaction
 from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
-from django.contrib.auth.models import Group
 
 from .models import (
+    Appointment,
+    Department,
     HospitalSettings,
     Invoice,
     InvoiceLine,
@@ -19,10 +21,13 @@ from .models import (
     NumberSequence,
     Patient,
     Service,
+    StaffProfile,
     StockMovement,
     StockReceipt,
     Supplier,
+    VisitType,
 )
+from .authorization import doctor_patient_queryset
 from .services.numbering import next_number
 
 
@@ -335,3 +340,114 @@ class HospitalBootstrapTests(TestCase):
                 action_flag=ADDITION,
             ).exists()
         )
+
+
+class RolePermissionTests(TestCase):
+    def setUp(self):
+        call_command("bootstrap_hospital", stdout=None)
+
+    def test_each_role_has_only_its_approved_model_permissions(self):
+        matrix = {
+            "Reception": (
+                {"add_patient", "add_appointment", "add_payment"},
+                {"view_consultation", "add_refund", "add_medicine"},
+            ),
+            "Pharmacy": (
+                {"view_prescription", "add_stockreceipt", "add_dispensing"},
+                {"add_appointment", "add_consultation", "change_patient"},
+            ),
+            "Doctor": (
+                {"view_patient", "add_consultation", "add_prescription"},
+                {"add_payment", "add_medicine", "approve_refund"},
+            ),
+            "Administrator": (
+                {"add_user", "add_service", "change_hospitalsettings"},
+                {"view_patient", "view_consultation", "add_payment", "void_invoice"},
+            ),
+        }
+
+        for role, (allowed, denied) in matrix.items():
+            with self.subTest(role=role):
+                user = get_user_model().objects.create_user(
+                    username=f"{role.lower()}-permission-test",
+                    password="Synthetic-Password-123!",
+                )
+                user.groups.add(Group.objects.get(name=role))
+                for codename in allowed:
+                    self.assertTrue(
+                        user.has_perm(f"core.{codename}")
+                        or user.has_perm(f"auth.{codename}")
+                    )
+                for codename in denied:
+                    self.assertFalse(
+                        user.has_perm(f"core.{codename}")
+                        or user.has_perm(f"auth.{codename}")
+                    )
+
+    def test_doctor_patient_access_is_limited_to_assigned_patients(self):
+        doctor_user = get_user_model().objects.create_user(
+            username="scoped-doctor", password="Synthetic-Password-123!"
+        )
+        doctor_user.groups.add(Group.objects.get(name="Doctor"))
+        department = Department.objects.create(code="DOC", name="Synthetic Department")
+        doctor = StaffProfile.objects.create(
+            user=doctor_user, employee_id="DOC-001", department=department
+        )
+        other_user = get_user_model().objects.create_user(username="other-doctor")
+        other_doctor = StaffProfile.objects.create(
+            user=other_user, employee_id="DOC-002", department=department
+        )
+        visit_type = VisitType.objects.create(code="VISIT", name="Synthetic Visit")
+        assigned = Patient.objects.create(mrn="SCOPE-001", full_name="Assigned Patient")
+        unrelated = Patient.objects.create(
+            mrn="SCOPE-002", full_name="Unrelated Patient"
+        )
+        Appointment.objects.create(
+            patient=assigned,
+            doctor=doctor,
+            visit_type=visit_type,
+            scheduled_at="2026-12-01T09:00:00Z",
+        )
+        Appointment.objects.create(
+            patient=unrelated,
+            doctor=other_doctor,
+            visit_type=visit_type,
+            scheduled_at="2026-12-01T10:00:00Z",
+        )
+
+        self.assertEqual(
+            list(doctor_patient_queryset(doctor_user).values_list("pk", flat=True)),
+            [assigned.pk],
+        )
+
+    def test_administrator_cannot_escalate_self_to_superuser(self):
+        administrator = get_user_model().objects.create_user(
+            username="role-admin",
+            password="Synthetic-Password-123!",
+            is_staff=True,
+        )
+        administrator.groups.add(Group.objects.get(name="Administrator"))
+        self.client.force_login(administrator)
+
+        add_url = reverse("admin:auth_user_add")
+        response = self.client.get(add_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'name="is_superuser"')
+        self.assertNotContains(response, 'name="user_permissions"')
+
+        response = self.client.post(
+            add_url,
+            {
+                "username": "attempted-superuser",
+                "password1": "Synthetic-New-Password-123!",
+                "password2": "Synthetic-New-Password-123!",
+                "is_superuser": "on",
+                "is_staff": "on",
+                "_save": "Save",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        created = get_user_model().objects.get(username="attempted-superuser")
+        self.assertFalse(created.is_superuser)
+        self.assertFalse(created.user_permissions.exists())

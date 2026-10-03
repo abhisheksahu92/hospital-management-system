@@ -1,7 +1,7 @@
-from django.contrib.auth.models import Group
 from django.core.management.base import BaseCommand
 
 from core.models import HospitalSettings, NumberSequence
+from core.roles import configure_role_permissions
 
 
 class Command(BaseCommand):
@@ -17,8 +17,7 @@ class Command(BaseCommand):
             },
         )
 
-        for name in ("Reception", "Pharmacy", "Doctor", "Administrator"):
-            Group.objects.get_or_create(name=name)
+        configure_role_permissions()
 
         for code in (
             "PATIENT",

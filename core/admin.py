@@ -1,4 +1,6 @@
 from django.contrib import admin
+from django.contrib.auth import get_user_model
+from django.contrib.auth.admin import UserAdmin
 
 from .models import (
     Department,
@@ -11,6 +13,58 @@ from .models import (
     Supplier,
     VisitType,
 )
+
+User = get_user_model()
+admin.site.unregister(User)
+
+
+@admin.register(User)
+class StaffUserAdmin(UserAdmin):
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if request.user.is_superuser:
+            return fieldsets
+
+        restricted = {"is_staff", "is_superuser", "user_permissions"}
+        return [
+            (
+                name,
+                {
+                    **options,
+                    "fields": tuple(
+                        f for f in options["fields"] if f not in restricted
+                    ),
+                },
+            )
+            for name, options in fieldsets
+            if any(field not in restricted for field in options["fields"])
+        ]
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = list(super().get_readonly_fields(request, obj))
+        if (
+            obj is not None
+            and obj.pk == request.user.pk
+            and not request.user.is_superuser
+        ):
+            fields.append("groups")
+        return fields
+
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        if not request.user.is_superuser:
+            queryset = queryset.filter(is_superuser=False)
+        return queryset
+
+    def save_model(self, request, obj, form, change):
+        if not request.user.is_superuser:
+            obj.is_superuser = False
+        super().save_model(request, obj, form, change)
+        if not request.user.is_superuser:
+            obj.user_permissions.clear()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(StaffProfile)

@@ -123,6 +123,7 @@ class Patient(TimestampedModel):
 
     class Meta:
         indexes = [models.Index(fields=["full_name"], name="patient_name_idx")]
+        permissions = [("view_all_patient_records", "Can view all patient records")]
 
 
 class Appointment(TimestampedModel):
@@ -571,6 +572,7 @@ class Invoice(TimestampedModel):
                 name="invoice_status_valid",
             ),
         ]
+        permissions = [("void_invoice", "Can void an issued invoice")]
 
 
 class InvoiceLine(models.Model):
@@ -666,6 +668,7 @@ class Refund(TimestampedModel):
                 name="refund_status_valid",
             ),
         ]
+        permissions = [("approve_refund", "Can approve a refund")]
 
 
 class Adjustment(TimestampedModel):
@@ -688,6 +691,7 @@ class Adjustment(TimestampedModel):
                 condition=~Q(amount=0), name="adjustment_amount_nonzero"
             )
         ]
+        permissions = [("approve_adjustment", "Can approve a financial adjustment")]
 
 
 class AuditEvent(models.Model):
