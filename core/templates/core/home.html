@@ -9,6 +9,16 @@
     <main>
       <h1>Hospital Management System</h1>
       <p>The application foundation is ready.</p>
+      {% if user.is_authenticated %}
+        <p>Signed in as {{ user.get_username }}</p>
+        <p><a href="{% url 'password_change' %}">Change password</a></p>
+        <form method="post" action="{% url 'logout' %}">
+          {% csrf_token %}
+          <button type="submit">Sign out</button>
+        </form>
+      {% else %}
+        <p><a href="{% url 'login' %}">Staff sign in</a></p>
+      {% endif %}
     </main>
   </body>
 </html>

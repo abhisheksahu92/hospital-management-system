@@ -1,7 +1,11 @@
 from decimal import Decimal
+import re
 
+from django.contrib.auth import get_user_model
+from django.core import mail
 from django.db import IntegrityError, transaction
 from django.test import TestCase
+from django.urls import reverse
 
 from .models import (
     HospitalSettings,
@@ -28,6 +32,121 @@ class PublicPagesTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
+
+
+class AuthenticationLifecycleTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="staff-test",
+            email="staff@example.test",
+            password="Synthetic-Password-123!",
+        )
+
+    def test_active_staff_can_log_in_and_log_out(self):
+        response = self.client.post(
+            reverse("login"),
+            {"username": "staff-test", "password": "Synthetic-Password-123!"},
+        )
+
+        self.assertRedirects(response, "/")
+        self.assertTrue(response.wsgi_request.user.is_authenticated)
+
+        response = self.client.post(reverse("logout"))
+
+        self.assertRedirects(response, reverse("login"))
+        self.assertFalse(response.wsgi_request.user.is_authenticated)
+
+    def test_invalid_and_inactive_users_cannot_log_in(self):
+        invalid_response = self.client.post(
+            reverse("login"), {"username": "staff-test", "password": "wrong"}
+        )
+        self.assertEqual(invalid_response.status_code, 200)
+        self.assertContains(invalid_response, "Please enter a correct")
+
+        self.user.is_active = False
+        self.user.save(update_fields=["is_active"])
+        inactive_response = self.client.post(
+            reverse("login"),
+            {"username": "staff-test", "password": "Synthetic-Password-123!"},
+        )
+        self.assertEqual(inactive_response.status_code, 200)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_deactivated_user_session_loses_protected_access(self):
+        self.client.force_login(self.user)
+        get_user_model().objects.filter(pk=self.user.pk).update(is_active=False)
+
+        response = self.client.get(reverse("password_change"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith(reverse("login")))
+
+    def test_password_change_requires_login_and_updates_password(self):
+        response = self.client.get(reverse("password_change"))
+        self.assertEqual(response.status_code, 302)
+
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("password_change"),
+            {
+                "old_password": "Synthetic-Password-123!",
+                "new_password1": "New-Synthetic-Password-456!",
+                "new_password2": "New-Synthetic-Password-456!",
+            },
+        )
+
+        self.assertRedirects(response, reverse("password_change_done"))
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("New-Synthetic-Password-456!"))
+
+    def test_password_reset_sends_email_without_exposing_user_existence(self):
+        response = self.client.post(
+            reverse("password_reset"), {"email": self.user.email}
+        )
+        self.assertRedirects(response, reverse("password_reset_done"))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("/accounts/reset/", mail.outbox[0].body)
+
+        reset_path = re.search(
+            r"http://testserver(/accounts/reset/[^\s]+)", mail.outbox[0].body
+        ).group(1)
+        response = self.client.get(reset_path, follow=True)
+        self.assertEqual(response.status_code, 200)
+        confirm_path = response.request["PATH_INFO"]
+        response = self.client.post(
+            confirm_path,
+            {
+                "new_password1": "Reset-Synthetic-Password-789!",
+                "new_password2": "Reset-Synthetic-Password-789!",
+            },
+        )
+        self.assertRedirects(response, reverse("password_reset_complete"))
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("Reset-Synthetic-Password-789!"))
+
+        response = self.client.post(
+            reverse("password_reset"), {"email": "unknown@example.test"}
+        )
+        self.assertRedirects(response, reverse("password_reset_done"))
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_staff_cannot_self_register_or_open_admin(self):
+        self.client.force_login(self.user)
+
+        self.assertEqual(self.client.get("/accounts/signup/").status_code, 404)
+        self.assertEqual(self.client.get("/admin/").status_code, 302)
+
+    def test_bootstrapped_superuser_can_manage_staff_profiles(self):
+        administrator = get_user_model().objects.create_superuser(
+            username="admin-test",
+            email="admin@example.test",
+            password="Synthetic-Admin-Password-123!",
+        )
+        self.client.force_login(administrator)
+
+        response = self.client.get(reverse("admin:core_staffprofile_changelist"))
+
+        self.assertEqual(response.status_code, 200)
 
 
 class SchemaConstraintTests(TestCase):
