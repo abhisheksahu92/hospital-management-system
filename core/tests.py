@@ -560,18 +560,65 @@ class BillingWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
         invoice = Invoice.objects.create(
+            number="RECEPTION-FINANCE-DENIAL",
+            patient=self.patient,
+            status=Invoice.Status.ISSUED,
+            total=Decimal("10.00"),
+        )
+        for route in ("invoice_adjustment", "invoice_refund"):
+            with self.subTest(route=route):
+                response = self.client.post(
+                    reverse(route, args=[invoice.pk]),
+                    {"amount": "1.00", "reason": "Unauthorized"},
+                )
+                self.assertEqual(response.status_code, 403)
+
+        void_invoice = Invoice.objects.create(
             number="NO-RECEPTION-VOID",
             patient=self.patient,
             status=Invoice.Status.ISSUED,
             total=Decimal("10.00"),
         )
         response = self.client.post(
-            reverse("invoice_void", args=[invoice.pk]),
+            reverse("invoice_void", args=[void_invoice.pk]),
             {"reason": "Unauthorized void"},
         )
         self.assertEqual(response.status_code, 403)
-        invoice.refresh_from_db()
-        self.assertEqual(invoice.status, Invoice.Status.ISSUED)
+        void_invoice.refresh_from_db()
+        self.assertEqual(void_invoice.status, Invoice.Status.ISSUED)
+
+    def test_doctor_and_pharmacy_cannot_access_financial_urls(self):
+        invoice = Invoice.objects.create(
+            number="ROLE-FINANCE-DENIAL",
+            patient=self.patient,
+            status=Invoice.Status.ISSUED,
+            total=Decimal("10.00"),
+        )
+        for role in ("Doctor", "Pharmacy"):
+            user = get_user_model().objects.create_user(
+                username=f"{role.lower()}-finance-denial",
+                password="Synthetic-Password-123!",
+            )
+            user.groups.add(Group.objects.get(name=role))
+            StaffProfile.objects.create(
+                user=user,
+                employee_id=f"{role.upper()}-FINANCE-DENIAL",
+            )
+            self.client.force_login(user)
+            with self.subTest(role=role):
+                for route in ("invoice_list", "invoice_detail"):
+                    args = [invoice.pk] if route == "invoice_detail" else []
+                    self.assertEqual(
+                        self.client.get(reverse(route, args=args)).status_code, 403
+                    )
+                for route in ("payment_create", "invoice_refund", "invoice_adjustment"):
+                    self.assertEqual(
+                        self.client.post(
+                            reverse(route, args=[invoice.pk]),
+                            {"amount": "1.00", "reason": "Unauthorized"},
+                        ).status_code,
+                        403,
+                    )
 
     def test_invoice_detail_renders_reception_payment_controls(self):
         invoice = Invoice.objects.create(
@@ -1932,6 +1979,50 @@ class ClinicalWorkflowTests(TestCase):
                     ).status_code,
                     403,
                 )
+
+    def test_administrator_finance_scope_does_not_grant_operational_or_clinical_access(
+        self,
+    ):
+        administrator = get_user_model().objects.create_user(
+            username="clinical-scope-administrator",
+            password="Synthetic-Password-123!",
+        )
+        administrator.groups.add(Group.objects.get(name="Administrator"))
+        StaffProfile.objects.create(
+            user=administrator,
+            employee_id="CLINICAL-SCOPE-ADMIN",
+        )
+        consultation = Consultation.objects.create(
+            appointment=self.appointment,
+            patient=self.patient,
+            doctor=self.doctor_profile,
+            clinical_notes="Private synthetic note",
+            diagnosis="Private synthetic diagnosis",
+        )
+        self.client.force_login(administrator)
+
+        self.assertEqual(self.client.get(reverse("invoice_list")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("patient_list")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("appointment_list")).status_code, 403)
+        self.assertEqual(
+            self.client.get(
+                reverse("clinical_history", args=[self.patient.pk])
+            ).status_code,
+            403,
+        )
+        self.assertEqual(
+            self.client.get(
+                reverse("consultation_detail", args=[consultation.pk])
+            ).status_code,
+            403,
+        )
+        self.assertEqual(
+            self.client.post(
+                reverse("consultation_create", args=[self.appointment.pk]),
+                {"clinical_notes": "Unauthorized", "diagnosis": "Unauthorized"},
+            ).status_code,
+            403,
+        )
 
     def test_pharmacy_sees_only_prescription_and_safety_data(self):
         consultation = Consultation.objects.create(

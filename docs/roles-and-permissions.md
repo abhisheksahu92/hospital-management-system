@@ -9,15 +9,17 @@ authorization.
 
 | Role | Allowed baseline | Explicitly not granted |
 |---|---|---|
-| Reception | Patient and appointment create/view/change; invoice/payment creation and view; reference data needed to schedule and bill | Clinical notes, diagnoses, prescriptions, pharmacy stock, refunds, invoice voids, adjustments |
-| Pharmacy | Minimum patient/prescription lookup permissions; medicine, supplier, receipt, batch, stock-movement, dispensing, sale, and return operations | Appointments, clinical notes/diagnoses writes, patient edits, invoice/payment writes, refund approval |
-| Doctor | Patient/appointment read, appointment updates, consultation and prescription create/view/change, medicine/reference reads | Payments, refunds, invoice voids/adjustments, pharmacy stock/sales |
-| Administrator | Staff accounts/profiles, role assignment, hospital and operational master data | Patient/clinical access and financial write/approval permissions by default |
+| Reception | Patient and appointment create/view/change; invoice/payment creation and view; reference data needed to schedule and bill | Clinical notes, diagnoses, prescriptions, pharmacy stock, discounts, refunds, invoice voids, financial adjustments |
+| Pharmacy | Minimum patient/prescription lookup permissions; medicine, supplier, receipt, batch, stock-movement, dispensing, OTC sale, return request, stock adjustment and quarantine operations | Appointments, clinical notes/diagnoses writes, patient edits, invoice/payment writes, financial adjustment/refund/void |
+| Doctor | Assigned-patient and own-schedule reads, appointment lifecycle updates, consultation and prescription create/view/change, medicine/reference reads | Other doctors' patient records, reception billing, refunds, invoice voids/adjustments, pharmacy stock/sales |
+| Administrator | Staff accounts/profiles, role assignment, hospital and operational master data, invoice reads/creation, discounts, refunds, invoice voids, and financial adjustments with reason/audit | Patient-directory, appointment, and clinical-record access; ordinary payment collection |
 
-Sensitive operations have explicit Django permissions: `core.void_invoice`,
-`core.approve_refund`, and `core.approve_adjustment`. None of the four baseline
-groups receives them. Their assignment requires an approved financial policy
-and must be paired with server-side approval workflow controls.
+Sensitive financial operations have explicit Django permissions including
+`core.void_invoice`, `core.add_refund`, and `core.add_adjustment`. Administrator
+is the sole role granted those actions. No second approver is required in the
+single-hospital MVP; each action requires a reason and creates an audit event.
+Stock adjustment uses `core.adjust_stock`, granted only to Pharmacy, and records
+both a balanced stock movement and an audit event.
 
 ## Object Scope
 
@@ -36,10 +38,9 @@ account created through `createsuperuser`.
 
 ## Current Boundary
 
-Patient, appointment, and clinical routes apply these checks and object scopes.
-Billing, pharmacy stock/sales/dispensing, and returns are still future work under
-KAN-12 through KAN-14. Each new endpoint must keep server-side checks and test
-minimum field visibility; the pharmacy prescription pages currently expose only
-patient identity, safety notes, and issued prescription items. Django Admin logs
-staff/group changes, while sensitive clinical read/create/print actions produce
-AuditEvents; full audit review remains under KAN-16.
+Patient, appointment, clinical, billing, stock, sale, dispense, and return routes
+apply server-side checks and object scopes. The pharmacy prescription pages
+expose only patient identity, safety notes, and issued prescription items.
+Django Admin logs staff/group and OTC-approval changes, while sensitive clinical
+read/create/print and financial/stock mutation actions produce AuditEvents.
+Full audit review remains under KAN-16.
