@@ -1,11 +1,14 @@
 from decimal import Decimal
 import re
 
+from django.contrib.admin.models import ADDITION, LogEntry
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.db import IntegrityError, transaction
+from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
+from django.contrib.auth.models import Group
 
 from .models import (
     HospitalSettings,
@@ -13,11 +16,14 @@ from .models import (
     InvoiceLine,
     Medicine,
     MedicineBatch,
+    NumberSequence,
     Patient,
+    Service,
     StockMovement,
     StockReceipt,
     Supplier,
 )
+from .services.numbering import next_number
 
 
 class PublicPagesTests(TestCase):
@@ -26,6 +32,13 @@ class PublicPagesTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Hospital Management System")
+
+    def test_home_page_uses_configured_hospital_name(self):
+        HospitalSettings.objects.create(name="Synthetic Community Hospital")
+
+        response = self.client.get("/")
+
+        self.assertContains(response, "Synthetic Community Hospital")
 
     def test_health_endpoint_returns_ok(self):
         response = self.client.get("/health/")
@@ -232,3 +245,93 @@ class SchemaConstraintTests(TestCase):
                 quantity_before=Decimal("10"),
                 quantity_after=Decimal("9"),
             )
+
+
+class HospitalBootstrapTests(TestCase):
+    def test_bootstrap_is_idempotent_and_creates_roles_and_sequences(self):
+        call_command("bootstrap_hospital", stdout=None)
+        call_command("bootstrap_hospital", stdout=None)
+
+        self.assertEqual(HospitalSettings.objects.count(), 1)
+        self.assertEqual(
+            set(Group.objects.values_list("name", flat=True)),
+            {"Reception", "Pharmacy", "Doctor", "Administrator"},
+        )
+        self.assertEqual(NumberSequence.objects.count(), 8)
+
+    def test_numbering_allocates_distinct_values_from_config(self):
+        NumberSequence.objects.create(code="PATIENT", prefix="P-")
+
+        self.assertEqual(next_number("PATIENT"), "P-1")
+        self.assertEqual(next_number("PATIENT"), "P-2")
+        self.assertEqual(NumberSequence.objects.get(code="PATIENT").next_value, 3)
+
+    def test_configuration_admin_requires_model_permission(self):
+        staff = get_user_model().objects.create_user(
+            username="config-staff",
+            password="Synthetic-Password-123!",
+            is_staff=True,
+        )
+        self.client.force_login(staff)
+
+        response = self.client.get(reverse("admin:core_service_changelist"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_service_price_change_does_not_rewrite_invoice_snapshot(self):
+        service = Service.objects.create(
+            code="CONSULT",
+            name="Consultation",
+            current_charge=Decimal("500.00"),
+        )
+        patient = Patient.objects.create(
+            mrn="SNAPSHOT-001", full_name="Synthetic Patient"
+        )
+        invoice = Invoice.objects.create(number="SNAPSHOT-INV", patient=patient)
+        line = InvoiceLine.objects.create(
+            invoice=invoice,
+            service=service,
+            description="Consultation",
+            quantity=Decimal("1"),
+            unit_price=Decimal("500.00"),
+            tax_rate=None,
+            discount_amount=Decimal("0.00"),
+            line_total=Decimal("500.00"),
+        )
+
+        service.current_charge = Decimal("700.00")
+        service.save(update_fields=("current_charge", "updated_at"))
+        line.refresh_from_db()
+
+        self.assertEqual(line.unit_price, Decimal("500.00"))
+        self.assertIsNone(line.tax_rate)
+
+    def test_admin_master_data_change_is_logged(self):
+        administrator = get_user_model().objects.create_superuser(
+            username="master-admin",
+            email="master-admin@example.test",
+            password="Synthetic-Admin-Password-123!",
+        )
+        self.client.force_login(administrator)
+
+        response = self.client.post(
+            reverse("admin:core_service_add"),
+            {
+                "code": "SVC-TEST",
+                "name": "Synthetic Service",
+                "current_charge": "",
+                "is_active": "on",
+                "_save": "Save",
+            },
+        )
+
+        service = Service.objects.get(code="SVC-TEST")
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(
+            LogEntry.objects.filter(
+                user=administrator,
+                content_type__model="service",
+                object_id=str(service.pk),
+                action_flag=ADDITION,
+            ).exists()
+        )

@@ -14,7 +14,7 @@ for local development/tests. No Supabase tables or client are configured.
 | `HospitalSettings` | name, timezone, currency_code, phone, address | Primary key constrained to singleton value 1 |
 | `NumberSequence` | code, prefix, next_value | Unique code; next_value > 0 |
 | `VisitType` | code, name, is_active | Unique code and name |
-| `Service` | code, name, current_charge, is_active | Unique code/name; current_charge >= 0 |
+| `Service` | code, name, optional current_charge, is_active | Unique code/name; configured charge >= 0 |
 | `PaymentMethod` | code, name, is_active | Unique code and name |
 | `Supplier` | code, name, contact fields, address, is_active | Unique code |
 | `Medicine` | code, generic/brand names, strength, form, unit, optional barcode | Unique code and non-null barcode |
@@ -33,7 +33,7 @@ for local development/tests. No Supabase tables or client are configured.
 | `PharmacyReturn` | number, optional patient, reason, status, created_by | Unique number; allowed-status check |
 | `ReturnLine` | pharmacy_return, exactly one sale_line or dispensing_line, quantity, refund_amount | Source cardinality check; quantity > 0; refund_amount >= 0 |
 | `Invoice` | number, patient, status, subtotal/tax/discount/total snapshots, issued_at, created_by | Unique number; totals >= 0; allowed-status check |
-| `InvoiceLine` | invoice, optional service, description, quantity, unit_price, tax_rate, discount_amount, line_total | quantity > 0; monetary values/rate >= 0 |
+| `InvoiceLine` | invoice, optional service, description, quantity, unit_price, optional tax_rate, discount_amount, line_total | quantity > 0; monetary values/configured rate >= 0 |
 | `Payment` | invoice, method, amount, reference, received_by, received_at | amount > 0 |
 | `Refund` | payment, amount, reason, status, requester, approver | amount > 0; allowed-status check |
 | `Adjustment` | invoice, signed amount, reason, approver | amount != 0 |
@@ -79,7 +79,9 @@ database constraints. Search/schedule/expiry lookups have targeted indexes.
 Issued invoice lines and pharmacy sale lines store the values applied at issue
 time, so changing current service or medicine prices does not rewrite history.
 Operational services in KAN-23 will coordinate stock, payments, returns, and
-number generation transactionally; a schema constraint alone cannot enforce
+number generation transactionally; `core.services.numbering.next_number()` uses
+a row lock and atomic update for document sequences, while KAN-23 adds the
+remaining concurrency/invariant coverage. A schema constraint alone cannot enforce
 cross-row totals or prevent every concurrent oversell.
 
 ## Explicitly deferred pending owner decisions
@@ -92,5 +94,7 @@ cross-row totals or prevent every concurrent oversell.
 - Doctor schedule overlap policy and queue numbering/order.
 
 The current schema uses one patient safety-notes field, a service's current
-charge plus transaction snapshots, and general number-sequence rows. These are
-reversible MVP foundations, not approval of the deferred business policies.
+charge (nullable until the charge policy is approved) plus transaction snapshots,
+an optional invoice tax-rate snapshot (nullable until tax rules are approved),
+and general number-sequence rows. These are reversible MVP foundations, not
+approval of the deferred business policies.

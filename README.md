@@ -71,6 +71,15 @@ email is sent by the test suite. Django's built-in login view does not
 rate-limit failures; configure and verify edge-level login rate limiting under
 KAN-16 before staging accounts are used. See [docs/security.md](docs/security.md).
 
+After creating the initial administrator, run `python manage.py bootstrap_hospital`
+to create the singleton hospital settings placeholder, four empty role groups,
+and document-number sequences. Replace the placeholder hospital name and review
+group permissions before staff onboarding. Run the command again safely after
+deployment or restore; it does not create users or assign permissions. Configure
+departments, visit types, services, payment methods, suppliers, and medicines in
+Django Admin. Tax, discount, refund, and pharmacy pricing policies remain subject
+to the open decisions in `docs/decisions.md`.
+
 ## Supabase
 
 Supabase is not configured or connected. Its intended role (if any), data access

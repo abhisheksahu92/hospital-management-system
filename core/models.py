@@ -70,13 +70,16 @@ class VisitType(TimestampedModel):
 class Service(TimestampedModel):
     code = models.CharField(max_length=32, unique=True)
     name = models.CharField(max_length=160, unique=True)
-    current_charge = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    current_charge = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:
         constraints = [
             models.CheckConstraint(
-                condition=Q(current_charge__gte=0), name="service_charge_nonnegative"
+                condition=Q(current_charge__isnull=True) | Q(current_charge__gte=0),
+                name="service_charge_nonnegative",
             )
         ]
 
@@ -578,7 +581,9 @@ class InvoiceLine(models.Model):
     description = models.CharField(max_length=200)
     quantity = models.DecimalField(max_digits=12, decimal_places=3, default=1)
     unit_price = models.DecimalField(max_digits=12, decimal_places=2)
-    tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True
+    )
     discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     line_total = models.DecimalField(max_digits=12, decimal_places=2)
 
@@ -589,7 +594,7 @@ class InvoiceLine(models.Model):
             ),
             models.CheckConstraint(
                 condition=Q(unit_price__gte=0)
-                & Q(tax_rate__gte=0)
+                & (Q(tax_rate__isnull=True) | Q(tax_rate__gte=0))
                 & Q(discount_amount__gte=0)
                 & Q(line_total__gte=0),
                 name="invoice_line_amounts_nonnegative",

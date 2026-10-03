@@ -75,3 +75,12 @@ configured. The product owner must decide whether Supabase has a separate
 approved role (authentication, database, storage, or not used in the application
 path) and document its data access and security responsibilities before any
 hospital data is exposed to it.
+
+## KAN-20 bootstrap boundary
+
+The reproducible `bootstrap_hospital` command creates the singleton settings row
+with a placeholder name, four empty Django role groups, and named sequence rows.
+It does not create a default administrator or assign permissions. The operator
+must run `createsuperuser`, replace the hospital placeholder, and review group
+permissions before onboarding staff. Named group permissions are defined by
+KAN-4; unapproved finance/tax rules and number formatting remain unset.
