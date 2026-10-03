@@ -2145,3 +2145,46 @@ class ClinicalWorkflowTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+    def test_page_flows_report_success_feedback(self):
+        StaffProfile.objects.create(user=self.reception, employee_id="REC-001")
+        self.client.force_login(self.reception)
+        resp = self.client.post(
+            reverse("patient_create"),
+            {"full_name": "Feedback Patient", "phone": "9998887776"},
+            follow=True,
+        )
+        self.assertContains(resp, "registered successfully")
+
+        resp = self.client.post(
+            reverse("patient_update", args=[self.patient.pk]),
+            {"full_name": "Updated Patient", "phone": "1234567890"},
+            follow=True,
+        )
+        self.assertContains(resp, "updated successfully")
+
+        self.appointment.status = Appointment.Status.SCHEDULED
+        self.appointment.save()
+        resp = self.client.post(
+            reverse("appointment_transition", args=[self.appointment.pk]),
+            {"action": "check_in"},
+            follow=True,
+        )
+        self.assertContains(resp, "Patient checked in")
+
+        self.appointment.status = Appointment.Status.IN_PROGRESS
+        self.appointment.save()
+
+        self.client.force_login(self.doctor)
+        resp = self.client.post(
+            reverse("consultation_create", args=[self.appointment.pk]),
+            {
+                "clinical_notes": "Patient note",
+                "diagnosis": "Healthy",
+                "items-TOTAL_FORMS": "0",
+                "items-INITIAL_FORMS": "0",
+            },
+            follow=True,
+        )
+        self.assertContains(resp, "Consultation saved successfully")
+

@@ -7,6 +7,7 @@
   </head>
   <body>
     <main>
+      {% if messages %}<ul class="messages">{% for message in messages %}<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>{% endfor %}</ul>{% endif %}
       <h1>{% if is_doctor %}My schedule{% else %}Appointments{% endif %}</h1>
       <form method="get">
         <label for="schedule-date">Date</label>
@@ -33,8 +34,8 @@
                   <form method="post" action="{% url 'appointment_transition' appointment.pk %}">
                     {% csrf_token %}
                     {% if appointment.status == 'scheduled' %}<button name="action" value="check_in">Check in</button>{% endif %}
-                    <button name="action" value="cancel">Cancel</button>
-                    <button name="action" value="no_show">No-show</button>
+                    <button name="action" value="cancel" onclick="return confirm('Are you sure you want to cancel this appointment?');">Cancel</button>
+                    <button name="action" value="no_show" onclick="return confirm('Mark this appointment as no-show?');">No-show</button>
                   </form>
                 {% endif %}
                 {% if is_doctor and appointment.status == 'checked_in' or is_doctor and appointment.status == 'in_progress' %}

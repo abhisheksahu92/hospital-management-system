@@ -7,6 +7,7 @@
   </head>
   <body>
     <main>
+      {% if messages %}<ul class="messages">{% for message in messages %}<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>{% endfor %}</ul>{% endif %}
       <h1>Invoice {{ invoice.number }}</h1>
       <p>{% if invoice.patient %}{{ invoice.patient.full_name }} ({{ invoice.patient.mrn }}){% else %}Walk-in sale{% endif %}</p>
       <p>Status: {{ invoice.get_status_display }}</p>
