@@ -1,0 +1,700 @@
+from django.conf import settings
+from django.db import models
+from django.db.models import F, Q
+
+
+class TimestampedModel(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+
+
+class Department(TimestampedModel):
+    code = models.CharField(max_length=32, unique=True)
+    name = models.CharField(max_length=120, unique=True)
+    is_active = models.BooleanField(default=True)
+
+
+class StaffProfile(TimestampedModel):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="staff_profile",
+    )
+    employee_id = models.CharField(max_length=32, unique=True)
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="staff",
+    )
+    job_title = models.CharField(max_length=120, blank=True)
+
+
+class HospitalSettings(TimestampedModel):
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    name = models.CharField(max_length=200)
+    timezone = models.CharField(max_length=64, default="Asia/Kolkata")
+    currency_code = models.CharField(max_length=3, default="INR")
+    phone = models.CharField(max_length=32, blank=True)
+    address = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=Q(id=1), name="hospital_settings_one_row")
+        ]
+
+
+class NumberSequence(TimestampedModel):
+    code = models.CharField(max_length=40, unique=True)
+    prefix = models.CharField(max_length=24, blank=True)
+    next_value = models.PositiveBigIntegerField(default=1)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(next_value__gt=0), name="number_sequence_positive"
+            )
+        ]
+
+
+class VisitType(TimestampedModel):
+    code = models.CharField(max_length=32, unique=True)
+    name = models.CharField(max_length=120, unique=True)
+    is_active = models.BooleanField(default=True)
+
+
+class Service(TimestampedModel):
+    code = models.CharField(max_length=32, unique=True)
+    name = models.CharField(max_length=160, unique=True)
+    current_charge = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(current_charge__gte=0), name="service_charge_nonnegative"
+            )
+        ]
+
+
+class PaymentMethod(TimestampedModel):
+    code = models.CharField(max_length=32, unique=True)
+    name = models.CharField(max_length=80, unique=True)
+    is_active = models.BooleanField(default=True)
+
+
+class Supplier(TimestampedModel):
+    code = models.CharField(max_length=32, unique=True)
+    name = models.CharField(max_length=160)
+    phone = models.CharField(max_length=32, blank=True)
+    email = models.EmailField(blank=True)
+    address = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+
+
+class Medicine(TimestampedModel):
+    code = models.CharField(max_length=40, unique=True)
+    generic_name = models.CharField(max_length=160)
+    brand_name = models.CharField(max_length=160, blank=True)
+    strength = models.CharField(max_length=80, blank=True)
+    dosage_form = models.CharField(max_length=80, blank=True)
+    unit = models.CharField(max_length=40)
+    barcode = models.CharField(max_length=80, unique=True, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+
+class Patient(TimestampedModel):
+    mrn = models.CharField(max_length=40, unique=True)
+    full_name = models.CharField(max_length=200)
+    date_of_birth = models.DateField(null=True, blank=True)
+    phone = models.CharField(max_length=32, blank=True)
+    address = models.TextField(blank=True)
+    emergency_contact_name = models.CharField(max_length=160, blank=True)
+    emergency_contact_phone = models.CharField(max_length=32, blank=True)
+    allergy_safety_notes = models.TextField(blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["full_name"], name="patient_name_idx")]
+
+
+class Appointment(TimestampedModel):
+    class Status(models.TextChoices):
+        SCHEDULED = "scheduled", "Scheduled"
+        CHECKED_IN = "checked_in", "Checked in"
+        IN_PROGRESS = "in_progress", "In progress"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+        NO_SHOW = "no_show", "No show"
+
+    patient = models.ForeignKey(
+        Patient, on_delete=models.PROTECT, related_name="appointments"
+    )
+    doctor = models.ForeignKey(
+        StaffProfile, on_delete=models.PROTECT, related_name="appointments"
+    )
+    visit_type = models.ForeignKey(VisitType, on_delete=models.PROTECT)
+    scheduled_at = models.DateTimeField()
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.SCHEDULED
+    )
+    queue_number = models.PositiveIntegerField(null=True, blank=True)
+    checked_in_at = models.DateTimeField(null=True, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["scheduled_at", "status"], name="appt_time_status_idx"
+            ),
+            models.Index(
+                fields=["doctor", "scheduled_at"], name="appt_doctor_time_idx"
+            ),
+            models.Index(
+                fields=["patient", "scheduled_at"], name="appt_patient_time_idx"
+            ),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(
+                    status__in=[
+                        "scheduled",
+                        "checked_in",
+                        "in_progress",
+                        "completed",
+                        "cancelled",
+                        "no_show",
+                    ]
+                ),
+                name="appointment_status_valid",
+            )
+        ]
+
+
+class Consultation(TimestampedModel):
+    appointment = models.OneToOneField(
+        Appointment,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="consultation",
+    )
+    patient = models.ForeignKey(
+        Patient, on_delete=models.PROTECT, related_name="consultations"
+    )
+    doctor = models.ForeignKey(
+        StaffProfile, on_delete=models.PROTECT, related_name="consultations"
+    )
+    clinical_notes = models.TextField(blank=True)
+    diagnosis = models.TextField(blank=True)
+
+
+class Prescription(TimestampedModel):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        ISSUED = "issued", "Issued"
+        CANCELLED = "cancelled", "Cancelled"
+
+    number = models.CharField(max_length=40, unique=True)
+    consultation = models.ForeignKey(
+        Consultation,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="prescriptions",
+    )
+    patient = models.ForeignKey(
+        Patient, on_delete=models.PROTECT, related_name="prescriptions"
+    )
+    doctor = models.ForeignKey(
+        StaffProfile, on_delete=models.PROTECT, related_name="prescriptions"
+    )
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.DRAFT
+    )
+    issued_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(status__in=["draft", "issued", "cancelled"]),
+                name="prescription_status_valid",
+            )
+        ]
+
+
+class PrescriptionItem(TimestampedModel):
+    prescription = models.ForeignKey(
+        Prescription, on_delete=models.PROTECT, related_name="items"
+    )
+    medicine = models.ForeignKey(Medicine, on_delete=models.PROTECT)
+    dosage = models.CharField(max_length=120, blank=True)
+    frequency = models.CharField(max_length=120, blank=True)
+    duration = models.CharField(max_length=120, blank=True)
+    instructions = models.TextField(blank=True)
+    quantity = models.DecimalField(max_digits=12, decimal_places=3)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(quantity__gt=0), name="prescription_item_qty_positive"
+            )
+        ]
+
+
+class StockReceipt(TimestampedModel):
+    number = models.CharField(max_length=40, unique=True)
+    supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT)
+    supplier_reference = models.CharField(max_length=100, blank=True)
+    received_at = models.DateTimeField()
+    received_by = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="stock_receipts",
+    )
+
+
+class MedicineBatch(TimestampedModel):
+    medicine = models.ForeignKey(
+        Medicine, on_delete=models.PROTECT, related_name="batches"
+    )
+    receipt = models.ForeignKey(
+        StockReceipt, on_delete=models.PROTECT, related_name="batches"
+    )
+    batch_number = models.CharField(max_length=80)
+    expiry_date = models.DateField()
+    purchase_price = models.DecimalField(max_digits=12, decimal_places=2)
+    sale_price = models.DecimalField(max_digits=12, decimal_places=2)
+    quantity_received = models.DecimalField(max_digits=12, decimal_places=3)
+    quantity_on_hand = models.DecimalField(max_digits=12, decimal_places=3)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["medicine", "batch_number"], name="medicine_batch_unique"
+            ),
+            models.CheckConstraint(
+                condition=Q(purchase_price__gte=0), name="batch_purchase_nonnegative"
+            ),
+            models.CheckConstraint(
+                condition=Q(sale_price__gte=0), name="batch_sale_nonnegative"
+            ),
+            models.CheckConstraint(
+                condition=Q(quantity_received__gt=0), name="batch_received_positive"
+            ),
+            models.CheckConstraint(
+                condition=Q(quantity_on_hand__gte=0)
+                & Q(quantity_on_hand__lte=F("quantity_received")),
+                name="batch_on_hand_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["medicine", "expiry_date"], name="batch_fefo_idx")
+        ]
+
+
+class StockMovement(models.Model):
+    class Kind(models.TextChoices):
+        RECEIPT = "receipt", "Receipt"
+        DISPENSE = "dispense", "Dispense"
+        SALE = "sale", "Sale"
+        RETURN = "return", "Return"
+        EXPIRY = "expiry", "Expiry"
+        QUARANTINE = "quarantine", "Quarantine"
+        ADJUSTMENT = "adjustment", "Adjustment"
+
+    batch = models.ForeignKey(
+        MedicineBatch, on_delete=models.PROTECT, related_name="movements"
+    )
+    kind = models.CharField(max_length=12, choices=Kind.choices)
+    quantity_delta = models.DecimalField(max_digits=12, decimal_places=3)
+    quantity_before = models.DecimalField(max_digits=12, decimal_places=3)
+    quantity_after = models.DecimalField(max_digits=12, decimal_places=3)
+    reference_type = models.CharField(max_length=40, blank=True)
+    reference_id = models.CharField(max_length=40, blank=True)
+    actor = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="stock_movements",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=~Q(quantity_delta=0), name="stock_movement_nonzero"
+            ),
+            models.CheckConstraint(
+                condition=Q(quantity_before__gte=0) & Q(quantity_after__gte=0),
+                name="stock_movement_quantities_nonnegative",
+            ),
+            models.CheckConstraint(
+                condition=Q(quantity_after=F("quantity_before") + F("quantity_delta")),
+                name="stock_movement_balances",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["batch", "created_at"], name="stock_move_batch_time_idx"
+            )
+        ]
+
+
+class PharmacySale(TimestampedModel):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        ISSUED = "issued", "Issued"
+        VOIDED = "voided", "Voided"
+
+    number = models.CharField(max_length=40, unique=True)
+    patient = models.ForeignKey(
+        Patient,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="pharmacy_sales",
+    )
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.DRAFT
+    )
+    sold_at = models.DateTimeField(null=True, blank=True)
+    sold_by = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pharmacy_sales",
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(status__in=["draft", "issued", "voided"]),
+                name="pharmacy_sale_status_valid",
+            )
+        ]
+
+
+class PharmacySaleLine(models.Model):
+    sale = models.ForeignKey(
+        PharmacySale, on_delete=models.PROTECT, related_name="lines"
+    )
+    batch = models.ForeignKey(MedicineBatch, on_delete=models.PROTECT)
+    quantity = models.DecimalField(max_digits=12, decimal_places=3)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+    line_total = models.DecimalField(max_digits=12, decimal_places=2)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(quantity__gt=0), name="pharmacy_sale_qty_positive"
+            ),
+            models.CheckConstraint(
+                condition=Q(unit_price__gte=0) & Q(line_total__gte=0),
+                name="pharmacy_sale_amounts_nonnegative",
+            ),
+        ]
+
+
+class Dispensing(TimestampedModel):
+    class Status(models.TextChoices):
+        PARTIAL = "partial", "Partial"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    number = models.CharField(max_length=40, unique=True)
+    prescription = models.ForeignKey(
+        Prescription, on_delete=models.PROTECT, related_name="dispensings"
+    )
+    patient = models.ForeignKey(
+        Patient, on_delete=models.PROTECT, related_name="dispensings"
+    )
+    dispensed_by = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="dispensings",
+    )
+    status = models.CharField(max_length=12, choices=Status.choices)
+    dispensed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(status__in=["partial", "completed", "cancelled"]),
+                name="dispensing_status_valid",
+            )
+        ]
+
+
+class DispensingLine(models.Model):
+    dispensing = models.ForeignKey(
+        Dispensing, on_delete=models.PROTECT, related_name="lines"
+    )
+    prescription_item = models.ForeignKey(PrescriptionItem, on_delete=models.PROTECT)
+    batch = models.ForeignKey(MedicineBatch, on_delete=models.PROTECT)
+    quantity = models.DecimalField(max_digits=12, decimal_places=3)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(quantity__gt=0), name="dispensing_qty_positive"
+            ),
+            models.CheckConstraint(
+                condition=Q(unit_price__gte=0), name="dispensing_price_nonnegative"
+            ),
+        ]
+
+
+class PharmacyReturn(TimestampedModel):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
+    number = models.CharField(max_length=40, unique=True)
+    patient = models.ForeignKey(
+        Patient,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="pharmacy_returns",
+    )
+    reason = models.TextField()
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.PENDING
+    )
+    created_by = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pharmacy_returns_created",
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(status__in=["pending", "approved", "rejected"]),
+                name="pharmacy_return_status_valid",
+            )
+        ]
+
+
+class ReturnLine(models.Model):
+    pharmacy_return = models.ForeignKey(
+        PharmacyReturn, on_delete=models.PROTECT, related_name="lines"
+    )
+    sale_line = models.ForeignKey(
+        PharmacySaleLine,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="return_lines",
+    )
+    dispensing_line = models.ForeignKey(
+        DispensingLine,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="return_lines",
+    )
+    quantity = models.DecimalField(max_digits=12, decimal_places=3)
+    refund_amount = models.DecimalField(max_digits=12, decimal_places=2)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(quantity__gt=0) & Q(refund_amount__gte=0),
+                name="return_line_amounts_valid",
+            ),
+            models.CheckConstraint(
+                condition=(Q(sale_line__isnull=True) & Q(dispensing_line__isnull=False))
+                | (Q(sale_line__isnull=False) & Q(dispensing_line__isnull=True)),
+                name="return_line_one_source",
+            ),
+        ]
+
+
+class Invoice(TimestampedModel):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        ISSUED = "issued", "Issued"
+        VOIDED = "voided", "Voided"
+
+    number = models.CharField(max_length=40, unique=True)
+    patient = models.ForeignKey(
+        Patient, on_delete=models.PROTECT, related_name="invoices"
+    )
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.DRAFT
+    )
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    tax_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    discount_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    issued_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="invoices_created",
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(subtotal__gte=0)
+                & Q(tax_total__gte=0)
+                & Q(discount_total__gte=0)
+                & Q(total__gte=0),
+                name="invoice_totals_nonnegative",
+            ),
+            models.CheckConstraint(
+                condition=Q(status__in=["draft", "issued", "voided"]),
+                name="invoice_status_valid",
+            ),
+        ]
+
+
+class InvoiceLine(models.Model):
+    invoice = models.ForeignKey(Invoice, on_delete=models.PROTECT, related_name="lines")
+    service = models.ForeignKey(
+        Service, on_delete=models.PROTECT, null=True, blank=True
+    )
+    description = models.CharField(max_length=200)
+    quantity = models.DecimalField(max_digits=12, decimal_places=3, default=1)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+    tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    line_total = models.DecimalField(max_digits=12, decimal_places=2)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(quantity__gt=0), name="invoice_line_qty_positive"
+            ),
+            models.CheckConstraint(
+                condition=Q(unit_price__gte=0)
+                & Q(tax_rate__gte=0)
+                & Q(discount_amount__gte=0)
+                & Q(line_total__gte=0),
+                name="invoice_line_amounts_nonnegative",
+            ),
+        ]
+
+
+class Payment(TimestampedModel):
+    invoice = models.ForeignKey(
+        Invoice, on_delete=models.PROTECT, related_name="payments"
+    )
+    method = models.ForeignKey(PaymentMethod, on_delete=models.PROTECT)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    reference = models.CharField(max_length=100, blank=True)
+    received_by = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="payments_received",
+    )
+    received_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(amount__gt=0), name="payment_amount_positive"
+            )
+        ]
+
+
+class Refund(TimestampedModel):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+        ISSUED = "issued", "Issued"
+
+    payment = models.ForeignKey(
+        Payment, on_delete=models.PROTECT, related_name="refunds"
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    reason = models.TextField()
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.PENDING
+    )
+    requested_by = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="refunds_requested",
+    )
+    approved_by = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="refunds_approved",
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(amount__gt=0), name="refund_amount_positive"
+            ),
+            models.CheckConstraint(
+                condition=Q(status__in=["pending", "approved", "rejected", "issued"]),
+                name="refund_status_valid",
+            ),
+        ]
+
+
+class Adjustment(TimestampedModel):
+    invoice = models.ForeignKey(
+        Invoice, on_delete=models.PROTECT, related_name="adjustments"
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    reason = models.TextField()
+    approved_by = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="adjustments_approved",
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=~Q(amount=0), name="adjustment_amount_nonzero"
+            )
+        ]
+
+
+class AuditEvent(models.Model):
+    actor = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="audit_events",
+    )
+    action = models.CharField(max_length=80)
+    target_type = models.CharField(max_length=80)
+    target_id = models.CharField(max_length=80)
+    details = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
