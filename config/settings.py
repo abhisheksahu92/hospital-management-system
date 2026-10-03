@@ -122,3 +122,16 @@ EMAIL_HOST_USER = os.getenv("DJANGO_EMAIL_USER", "resend")
 EMAIL_USE_SSL = env_bool("DJANGO_EMAIL_USE_SSL", default=not DEBUG)
 EMAIL_TIMEOUT = 10
 DEFAULT_FROM_EMAIL = RESEND_FROM_EMAIL or "webmaster@localhost"
+
+SENTRY_DSN = os.getenv("SENTRY_DSN", "").strip()
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[DjangoIntegration()],
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+        send_default_pii=False,
+        environment=os.getenv("APP_ENV", "staging" if not DEBUG else "development"),
+    )
