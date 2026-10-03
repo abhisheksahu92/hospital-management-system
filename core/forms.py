@@ -1,4 +1,5 @@
 from django import forms
+from datetime import timedelta
 from django.forms import inlineformset_factory
 from django.utils import timezone
 
@@ -11,6 +12,24 @@ from .models import (
     StaffProfile,
     VisitType,
 )
+
+APPOINTMENT_DURATION = timedelta(minutes=30)
+
+
+def appointment_slot_conflicts(doctor, scheduled_at, exclude_pk=None):
+    conflicts = Appointment.objects.filter(
+        doctor=doctor,
+        scheduled_at__gt=scheduled_at - APPOINTMENT_DURATION,
+        scheduled_at__lt=scheduled_at + APPOINTMENT_DURATION,
+        status__in=(
+            Appointment.Status.SCHEDULED,
+            Appointment.Status.CHECKED_IN,
+            Appointment.Status.IN_PROGRESS,
+        ),
+    )
+    if exclude_pk:
+        conflicts = conflicts.exclude(pk=exclude_pk)
+    return conflicts.exists()
 
 
 class PatientForm(forms.ModelForm):
@@ -62,21 +81,10 @@ class AppointmentForm(forms.ModelForm):
         doctor = cleaned_data.get("doctor")
         scheduled_at = cleaned_data.get("scheduled_at")
         if doctor and scheduled_at:
-            conflicts = Appointment.objects.filter(
-                doctor=doctor,
-                scheduled_at=scheduled_at,
-                status__in=(
-                    Appointment.Status.SCHEDULED,
-                    Appointment.Status.CHECKED_IN,
-                    Appointment.Status.IN_PROGRESS,
-                ),
-            )
-            if self.instance.pk:
-                conflicts = conflicts.exclude(pk=self.instance.pk)
-            if conflicts.exists():
+            if appointment_slot_conflicts(doctor, scheduled_at, self.instance.pk):
                 self.add_error(
                     "scheduled_at",
-                    "This doctor already has an active appointment at that start time.",
+                    "This doctor already has an overlapping active appointment.",
                 )
         return cleaned_data
 
@@ -84,10 +92,12 @@ class AppointmentForm(forms.ModelForm):
 class ConsultationForm(forms.ModelForm):
     class Meta:
         model = Consultation
-        fields = ("clinical_notes", "diagnosis")
+        fields = ("clinical_notes", "diagnosis", "follow_up_date", "follow_up_note")
         widgets = {
             "clinical_notes": forms.Textarea(attrs={"rows": 6}),
             "diagnosis": forms.Textarea(attrs={"rows": 3}),
+            "follow_up_date": forms.DateInput(attrs={"type": "date"}),
+            "follow_up_note": forms.Textarea(attrs={"rows": 2}),
         }
 
     def clean(self):

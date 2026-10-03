@@ -204,6 +204,8 @@ class Consultation(TimestampedModel):
     )
     clinical_notes = models.TextField(blank=True)
     diagnosis = models.TextField(blank=True)
+    follow_up_date = models.DateField(null=True, blank=True)
+    follow_up_note = models.TextField(blank=True)
 
 
 class Prescription(TimestampedModel):

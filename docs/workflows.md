@@ -16,10 +16,10 @@ synthetic data only.
    update. Merge, archive, and permanent deletion remain disabled until their
    policies are approved.
 4. Select an approved visit type and doctor, create or update an appointment,
-   and record the approved lifecycle event. Schedule conflicts and
-   reschedule/cancel outcomes follow owner-approved rules.
-5. Check in the patient and place the visit in the configured queue. Queue
-   order, priority, and numbering are determined by the approved policy.
+   and record the approved lifecycle event. Slots are 30 minutes, active doctor
+   appointments cannot overlap, and overbooking is not allowed.
+5. Check in the patient and place the visit in the FIFO queue by actual
+   check-in timestamp. There is no clinical-priority queue.
 6. Create only permitted charges, record an allowed payment, and print the
    resulting receipt. Corrections use approved void/refund/adjustment actions;
    issued records are not silently edited.
@@ -35,13 +35,13 @@ are denied unless a specific minimal workflow field is approved.
    authorized scope.
 3. Open the relevant clinical history and approved allergy/safety information.
    Cross-doctor access is denied unless explicitly granted.
-4. Record an encounter, notes, diagnosis, prescription, and approved
-   investigation/follow-up details.
+4. Record an encounter, notes, diagnosis, prescription, and an optional simple
+   follow-up date/note. Structured investigation orders are not in the MVP.
 5. Save and print a prescription using the approved fields. Clinical corrections
    preserve history and are audited.
 
-The exact consultation fields, diagnosis format, prescription structure, and
-clinical-history access rules require product/clinical approval.
+Follow-up is limited to a date and/or note; clinical history remains scoped,
+and Pharmacy never sees consultation notes or diagnosis.
 
 The current implementation creates the encounter only for the assigned doctor
 while the appointment is in progress. Prescription items are optional; if
@@ -88,14 +88,15 @@ require owner approval.
 
 ## Appointment implementation baseline
 
-Pending owner confirmation, the current workflow treats an exact doctor/start
-time collision as a conflict and rejects it; appointment duration, overlapping
-intervals, and overbooking are not inferred. Reception may book/reschedule a
-scheduled visit, check in or cancel a scheduled/checked-in visit, and mark a
-scheduled visit no-show. A doctor may start a checked-in visit and complete an
+Appointments use 30-minute slots. Active appointments for the same doctor may
+not overlap, including during concurrent create/reschedule requests; no
+overbooking is permitted. Reception may book/reschedule a scheduled visit,
+check in or cancel a scheduled/checked-in visit, and mark a scheduled visit
+no-show. The assigned doctor may start a checked-in visit and complete an
 in-progress visit. The waiting queue contains checked-in visits ordered by
-check-in timestamp, then record ID; no queue number or priority is assigned.
-All lifecycle changes are recorded with actor, previous/next status, and time.
+actual check-in timestamp, then record ID; there is no priority logic or queue
+number. All lifecycle changes are recorded with actor, previous/next status,
+and time.
 
 ## Shared lifecycle and integrity rules
 

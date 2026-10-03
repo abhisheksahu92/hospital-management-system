@@ -1618,6 +1618,52 @@ class AppointmentWorkflowTests(TestCase):
         with self.assertRaises(IntegrityError), transaction.atomic():
             self.make_appointment()
 
+    def test_thirty_minute_overlap_is_rejected_but_back_to_back_is_allowed(self):
+        self.make_appointment(hour=9)
+        other_patient = Patient.objects.create(
+            mrn="APPT-OVERLAP-002", full_name="Overlap Synthetic Patient"
+        )
+        form_data = {
+            "patient": other_patient.pk,
+            "doctor": self.doctor_profile.pk,
+            "visit_type": self.visit_type.pk,
+            "scheduled_at": "2026-12-03T14:45",
+        }
+
+        overlap = AppointmentForm(data=form_data)
+        back_to_back = AppointmentForm(
+            data={**form_data, "scheduled_at": "2026-12-03T15:00"}
+        )
+
+        self.assertFalse(overlap.is_valid())
+        self.assertIn("scheduled_at", overlap.errors)
+        self.assertTrue(back_to_back.is_valid(), back_to_back.errors)
+
+    def test_create_and_reschedule_reject_overlapping_slots(self):
+        self.make_appointment(hour=9)
+        other_patient = Patient.objects.create(
+            mrn="APPT-OVERLAP-003", full_name="Second Overlap Patient"
+        )
+        moving = self.make_appointment(hour=11, patient=other_patient)
+        self.client.force_login(self.reception)
+        data = {
+            "patient": other_patient.pk,
+            "doctor": self.doctor_profile.pk,
+            "visit_type": self.visit_type.pk,
+            "scheduled_at": "2026-12-03T14:45",
+        }
+
+        create_response = self.client.post(reverse("appointment_create"), data)
+        reschedule_response = self.client.post(
+            reverse("appointment_reschedule", args=[moving.pk]), data
+        )
+
+        self.assertEqual(create_response.status_code, 200)
+        self.assertEqual(reschedule_response.status_code, 200)
+        self.assertEqual(Appointment.objects.count(), 2)
+        moving.refresh_from_db()
+        self.assertEqual(moving.scheduled_at.hour, 11)
+
     def test_reception_can_reschedule_and_change_is_audited(self):
         appointment = self.make_appointment()
         self.client.force_login(self.reception)
@@ -1660,7 +1706,7 @@ class AppointmentWorkflowTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "already has an active appointment")
+        self.assertContains(response, "overlapping active appointment")
 
     def test_doctor_schedule_contains_only_own_appointments(self):
         own = self.make_appointment()
@@ -1875,6 +1921,26 @@ class ClinicalWorkflowTests(TestCase):
                 action="clinical.prescription_issued",
                 target_id=str(prescription.pk),
             ).exists()
+        )
+
+    def test_doctor_can_record_simple_follow_up_plan(self):
+        self.client.force_login(self.doctor)
+
+        response = self.client.post(
+            reverse("consultation_create", args=[self.appointment.pk]),
+            self.prescription_post_data(
+                follow_up_date="2026-12-18",
+                follow_up_note="Review symptoms in two weeks",
+            ),
+        )
+
+        consultation = Consultation.objects.get(appointment=self.appointment)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(consultation.follow_up_date.isoformat(), "2026-12-18")
+        self.assertEqual(consultation.follow_up_note, "Review symptoms in two weeks")
+        self.assertContains(
+            self.client.get(reverse("consultation_detail", args=[consultation.pk])),
+            "Review symptoms in two weeks",
         )
 
     def test_duplicate_submission_reuses_existing_encounter(self):

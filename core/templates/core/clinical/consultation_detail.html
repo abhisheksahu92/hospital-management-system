@@ -15,6 +15,9 @@
       <p>{{ consultation.clinical_notes|linebreaksbr }}</p>
       <h2>Diagnosis</h2>
       <p>{{ consultation.diagnosis|linebreaksbr }}</p>
+      <h2>Follow-up</h2>
+      <p>{{ consultation.follow_up_date|default:"No date set" }}</p>
+      <p>{{ consultation.follow_up_note|linebreaksbr|default:"No follow-up note" }}</p>
       <h2>Prescriptions</h2>
       <ul>
         {% for prescription in prescriptions %}

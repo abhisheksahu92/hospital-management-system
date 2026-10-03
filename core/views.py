@@ -19,6 +19,7 @@ from .forms import (
     ConsultationForm,
     PatientForm,
     PrescriptionItemFormSet,
+    appointment_slot_conflicts,
 )
 from .models import (
     Appointment,
@@ -709,20 +710,31 @@ def appointment_create(request):
     if request.method == "POST" and form.is_valid():
         try:
             with transaction.atomic():
-                appointment = form.save()
-                _audit_appointment_change(
-                    request,
-                    appointment,
-                    "appointment.created",
-                    {"status": appointment.status},
-                )
+                doctor = form.cleaned_data["doctor"]
+                StaffProfile.objects.select_for_update().get(pk=doctor.pk)
+                if appointment_slot_conflicts(
+                    doctor, form.cleaned_data["scheduled_at"]
+                ):
+                    form.add_error(
+                        "scheduled_at",
+                        "This doctor already has an overlapping active appointment.",
+                    )
+                else:
+                    appointment = form.save()
+                    _audit_appointment_change(
+                        request,
+                        appointment,
+                        "appointment.created",
+                        {"status": appointment.status},
+                    )
         except IntegrityError:
             form.add_error(
                 "scheduled_at",
-                "This doctor already has an active appointment at that start time.",
+                "This doctor already has an overlapping active appointment.",
             )
         else:
-            return redirect("appointment_list")
+            if not form.errors:
+                return redirect("appointment_list")
     return render(
         request,
         "core/appointments/form.html",
@@ -745,20 +757,33 @@ def appointment_reschedule(request, pk):
         changed_fields = form.changed_data
         try:
             with transaction.atomic():
-                appointment = form.save()
-                _audit_appointment_change(
-                    request,
-                    appointment,
-                    "appointment.rescheduled",
-                    {"changed_fields": sorted(changed_fields)},
-                )
+                doctor = form.cleaned_data["doctor"]
+                StaffProfile.objects.select_for_update().get(pk=doctor.pk)
+                if appointment_slot_conflicts(
+                    doctor,
+                    form.cleaned_data["scheduled_at"],
+                    exclude_pk=appointment.pk,
+                ):
+                    form.add_error(
+                        "scheduled_at",
+                        "This doctor already has an overlapping active appointment.",
+                    )
+                else:
+                    appointment = form.save()
+                    _audit_appointment_change(
+                        request,
+                        appointment,
+                        "appointment.rescheduled",
+                        {"changed_fields": sorted(changed_fields)},
+                    )
         except IntegrityError:
             form.add_error(
                 "scheduled_at",
-                "This doctor already has an active appointment at that start time.",
+                "This doctor already has an overlapping active appointment.",
             )
         else:
-            return redirect("appointment_list")
+            if not form.errors:
+                return redirect("appointment_list")
     return render(
         request,
         "core/appointments/form.html",
