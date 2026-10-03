@@ -68,6 +68,19 @@ class PublicPagesTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
 
+    def test_role_dashboards_show_relevant_summaries(self):
+        call_command("bootstrap_hospital", stdout=None)
+        reception = get_user_model().objects.create_user("rec-dash")
+        reception.groups.add(Group.objects.get(name="Reception"))
+        StaffProfile.objects.create(user=reception, employee_id="REC-DASH")
+
+        self.client.force_login(reception)
+        resp = self.client.get("/")
+        self.assertContains(resp, "Reception overview")
+        self.assertNotContains(resp, "Doctor overview")
+        self.assertNotContains(resp, "Pharmacy overview")
+        self.assertNotContains(resp, "Operations overview")
+
 
 class AuthenticationLifecycleTests(TestCase):
     def setUp(self):

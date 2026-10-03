@@ -91,15 +91,70 @@ class HospitalLoginView(LoginView):
 
 def home(request):
     hospital = HospitalSettings.objects.filter(pk=1).only("name").first()
-    return render(
-        request,
-        "core/home.html",
-        {
-            "hospital": hospital,
-            "is_pharmacy": request.user.is_authenticated
-            and _has_role(request.user, "Pharmacy"),
-        },
-    )
+    context = {"hospital": hospital}
+    user = request.user
+
+    if user.is_authenticated:
+        today = timezone.localdate()
+        is_reception = _has_role(user, "Reception")
+        is_doctor = _has_role(user, "Doctor")
+        is_pharmacy = _has_role(user, "Pharmacy")
+        is_admin = _has_role(user, "Administrator")
+
+        context["is_reception"] = is_reception
+        context["is_doctor"] = is_doctor
+        context["is_pharmacy"] = is_pharmacy
+        context["is_admin"] = is_admin
+
+        if is_reception:
+            context["reception_today_appointments"] = Appointment.objects.filter(
+                scheduled_at__date=today
+            ).count()
+            context["reception_waiting_queue"] = Appointment.objects.filter(
+                scheduled_at__date=today, status=Appointment.Status.CHECKED_IN
+            ).count()
+            context["reception_today_collections"] = Payment.objects.filter(
+                received_at__date=today
+            ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+
+        if is_doctor:
+            doctor_profile = StaffProfile.objects.filter(user=user).first()
+            if doctor_profile:
+                context["doctor_today_appointments"] = Appointment.objects.filter(
+                    doctor=doctor_profile, scheduled_at__date=today
+                ).count()
+                context["doctor_waiting_patients"] = Appointment.objects.filter(
+                    doctor=doctor_profile,
+                    scheduled_at__date=today,
+                    status=Appointment.Status.CHECKED_IN,
+                ).count()
+
+        if is_pharmacy:
+            context["pharmacy_issued_prescriptions"] = Prescription.objects.filter(
+                status=Prescription.Status.ISSUED
+            ).count()
+            context["pharmacy_low_stock_batches"] = MedicineBatch.objects.filter(
+                quantity_on_hand__lt=10, is_quarantined=False
+            ).count()
+            context["pharmacy_expired_batches"] = MedicineBatch.objects.filter(
+                expiry_date__lt=today
+            ).count()
+
+        if is_admin:
+            context["admin_total_patients"] = Patient.objects.filter(
+                archived_at__isnull=True
+            ).count()
+            context["admin_today_collections"] = Payment.objects.filter(
+                received_at__date=today
+            ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+            context["admin_today_refunds"] = Refund.objects.filter(
+                created_at__date=today, status=Refund.Status.ISSUED
+            ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+            context["admin_unsettled_invoices"] = Invoice.objects.filter(
+                status=Invoice.Status.ISSUED
+            ).count()
+
+    return render(request, "core/home.html", context)
 
 
 def health(request):

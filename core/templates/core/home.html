@@ -11,6 +11,46 @@
       <p>The application foundation is ready.</p>
       {% if user.is_authenticated %}
         <p>Signed in as {{ user.get_username }}</p>
+        {% if is_reception %}
+          <section aria-labelledby="reception-summary">
+            <h2 id="reception-summary">Reception overview</h2>
+            <ul>
+              <li>Today's appointments: {{ reception_today_appointments }}</li>
+              <li>Waiting queue: {{ reception_waiting_queue }}</li>
+              <li>Today's collections: {{ reception_today_collections }}</li>
+            </ul>
+          </section>
+        {% endif %}
+        {% if is_doctor %}
+          <section aria-labelledby="doctor-summary">
+            <h2 id="doctor-summary">Doctor overview</h2>
+            <ul>
+              <li>Today's appointments: {{ doctor_today_appointments }}</li>
+              <li>Waiting patients: {{ doctor_waiting_patients }}</li>
+            </ul>
+          </section>
+        {% endif %}
+        {% if is_pharmacy %}
+          <section aria-labelledby="pharmacy-summary">
+            <h2 id="pharmacy-summary">Pharmacy overview</h2>
+            <ul>
+              <li>Issued prescriptions: {{ pharmacy_issued_prescriptions }}</li>
+              <li>Low stock batches: {{ pharmacy_low_stock_batches }}</li>
+              <li>Expired batches: {{ pharmacy_expired_batches }}</li>
+            </ul>
+          </section>
+        {% endif %}
+        {% if is_admin %}
+          <section aria-labelledby="admin-summary">
+            <h2 id="admin-summary">Operations overview</h2>
+            <ul>
+              <li>Active registered patients: {{ admin_total_patients }}</li>
+              <li>Today's collections: {{ admin_today_collections }}</li>
+              <li>Today's refunds: {{ admin_today_refunds }}</li>
+              <li>Unsettled invoices: {{ admin_unsettled_invoices }}</li>
+            </ul>
+          </section>
+        {% endif %}
         {% if perms.core.view_patient %}<p><a href="{% url 'patient_list' %}">Patients</a></p>{% endif %}
         {% if perms.core.view_appointment %}<p><a href="{% url 'appointment_list' %}">Appointments</a></p>{% endif %}
         {% if perms.core.view_invoice %}<p><a href="{% url 'invoice_list' %}">Invoices</a></p>{% endif %}
