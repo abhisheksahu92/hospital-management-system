@@ -1,13 +1,16 @@
 from django.contrib.auth.decorators import permission_required
 from django.core.exceptions import PermissionDenied
-from django.http import JsonResponse
+from django.db import IntegrityError
+from django.http import HttpResponseBadRequest, JsonResponse
 from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+from django.utils.dateparse import parse_date
 
 from .authorization import doctor_patient_queryset
-from .forms import PatientForm
-from .models import AuditEvent, HospitalSettings, Patient, StaffProfile
+from .forms import AppointmentForm, PatientForm
+from .models import Appointment, AuditEvent, HospitalSettings, Patient, StaffProfile
 from .services.numbering import next_number
 
 
@@ -134,3 +137,181 @@ def patient_update(request, pk):
         "core/patients/form.html",
         {"form": form, "creating": False, "patient": patient},
     )
+
+
+def _appointment_read_queryset(user):
+    if _has_role(user, "Reception") and StaffProfile.objects.filter(user=user).exists():
+        return Appointment.objects.all()
+    if _has_role(user, "Doctor"):
+        return Appointment.objects.filter(doctor__user=user)
+    raise PermissionDenied
+
+
+def _audit_appointment_change(request, appointment, action, details):
+    actor = StaffProfile.objects.filter(user=request.user).first()
+    AuditEvent.objects.create(
+        actor=actor,
+        action=action,
+        target_type="appointment",
+        target_id=str(appointment.pk),
+        details=details,
+    )
+
+
+@permission_required("core.view_appointment", raise_exception=True)
+def appointment_list(request):
+    raw_day = request.GET.get("date", "")
+    selected_day = parse_date(raw_day) if raw_day else timezone.localdate()
+    if selected_day is None:
+        return HttpResponseBadRequest("Invalid appointment date.")
+
+    appointments = _appointment_read_queryset(request.user).filter(
+        scheduled_at__date=selected_day
+    )
+    queue = appointments.filter(status=Appointment.Status.CHECKED_IN).order_by(
+        "checked_in_at", "pk"
+    )
+    return render(
+        request,
+        "core/appointments/list.html",
+        {
+            "appointments": appointments.select_related(
+                "patient", "doctor__user", "visit_type"
+            ).order_by("scheduled_at", "pk"),
+            "queue": queue.select_related("patient", "doctor__user", "visit_type"),
+            "selected_day": selected_day,
+            "is_reception": _has_role(request.user, "Reception"),
+            "is_doctor": _has_role(request.user, "Doctor"),
+        },
+    )
+
+
+@permission_required("core.add_appointment", raise_exception=True)
+def appointment_create(request):
+    if (
+        not _has_role(request.user, "Reception")
+        or not StaffProfile.objects.filter(user=request.user).exists()
+    ):
+        raise PermissionDenied
+    form = AppointmentForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        try:
+            with transaction.atomic():
+                appointment = form.save()
+                _audit_appointment_change(
+                    request,
+                    appointment,
+                    "appointment.created",
+                    {"status": appointment.status},
+                )
+        except IntegrityError:
+            form.add_error(
+                "scheduled_at",
+                "This doctor already has an active appointment at that start time.",
+            )
+        else:
+            return redirect("appointment_list")
+    return render(
+        request,
+        "core/appointments/form.html",
+        {"form": form, "creating": True},
+    )
+
+
+@permission_required("core.change_appointment", raise_exception=True)
+def appointment_reschedule(request, pk):
+    if (
+        not _has_role(request.user, "Reception")
+        or not StaffProfile.objects.filter(user=request.user).exists()
+    ):
+        raise PermissionDenied
+    appointment = get_object_or_404(
+        Appointment.objects.filter(status=Appointment.Status.SCHEDULED), pk=pk
+    )
+    form = AppointmentForm(request.POST or None, instance=appointment)
+    if request.method == "POST" and form.is_valid():
+        changed_fields = form.changed_data
+        try:
+            with transaction.atomic():
+                appointment = form.save()
+                _audit_appointment_change(
+                    request,
+                    appointment,
+                    "appointment.rescheduled",
+                    {"changed_fields": sorted(changed_fields)},
+                )
+        except IntegrityError:
+            form.add_error(
+                "scheduled_at",
+                "This doctor already has an active appointment at that start time.",
+            )
+        else:
+            return redirect("appointment_list")
+    return render(
+        request,
+        "core/appointments/form.html",
+        {"form": form, "creating": False, "appointment": appointment},
+    )
+
+
+@permission_required("core.change_appointment", raise_exception=True)
+def appointment_transition(request, pk):
+    if request.method != "POST":
+        return HttpResponseBadRequest("Appointment actions require POST.")
+    appointments = _appointment_read_queryset(request.user)
+    appointment = get_object_or_404(appointments, pk=pk)
+    action = request.POST.get("action", "")
+    reception_transitions = {
+        (Appointment.Status.SCHEDULED, "check_in"): Appointment.Status.CHECKED_IN,
+        (Appointment.Status.SCHEDULED, "cancel"): Appointment.Status.CANCELLED,
+        (Appointment.Status.SCHEDULED, "no_show"): Appointment.Status.NO_SHOW,
+        (Appointment.Status.CHECKED_IN, "cancel"): Appointment.Status.CANCELLED,
+    }
+    doctor_transitions = {
+        (Appointment.Status.CHECKED_IN, "start"): Appointment.Status.IN_PROGRESS,
+        (Appointment.Status.IN_PROGRESS, "complete"): Appointment.Status.COMPLETED,
+    }
+    transitions = (
+        reception_transitions
+        if _has_role(request.user, "Reception")
+        else doctor_transitions
+        if _has_role(request.user, "Doctor")
+        else {}
+    )
+    previous_status = appointment.status
+    next_status = transitions.get((previous_status, action))
+    if next_status is None:
+        return HttpResponseBadRequest("Invalid appointment status transition.")
+
+    with transaction.atomic():
+        appointment = Appointment.objects.select_for_update().get(pk=appointment.pk)
+        if appointment.status != previous_status:
+            return HttpResponseBadRequest(
+                "Appointment status changed; refresh and retry."
+            )
+        appointment.status = next_status
+        timestamp = timezone.now()
+        update_fields = ["status", "updated_at"]
+        if action == "check_in":
+            appointment.checked_in_at = timestamp
+            update_fields.append("checked_in_at")
+        elif action == "start":
+            appointment.started_at = timestamp
+            update_fields.append("started_at")
+        elif action == "complete":
+            appointment.completed_at = timestamp
+            update_fields.append("completed_at")
+        elif action == "cancel":
+            appointment.cancelled_at = timestamp
+            update_fields.append("cancelled_at")
+        elif action == "no_show":
+            appointment.no_show_at = timestamp
+            update_fields.append("no_show_at")
+        appointment.save(update_fields=update_fields)
+        _audit_appointment_change(
+            request,
+            appointment,
+            "appointment.status_changed",
+            {"from": previous_status, "to": next_status},
+        )
+    return redirect("appointment_list")

@@ -76,6 +76,17 @@ The administrator role does not automatically grant clinical-record access.
 Exact settings, approval limits, report definitions, and export permissions
 require owner approval.
 
+## Appointment implementation baseline
+
+Pending owner confirmation, the current workflow treats an exact doctor/start
+time collision as a conflict and rejects it; appointment duration, overlapping
+intervals, and overbooking are not inferred. Reception may book/reschedule a
+scheduled visit, check in or cancel a scheduled/checked-in visit, and mark a
+scheduled visit no-show. A doctor may start a checked-in visit and complete an
+in-progress visit. The waiting queue contains checked-in visits ordered by
+check-in timestamp, then record ID; no queue number or priority is assigned.
+All lifecycle changes are recorded with actor, previous/next status, and time.
+
 ## Shared lifecycle and integrity rules
 
 - Authentication, authorization, and record scoping are checked on the server

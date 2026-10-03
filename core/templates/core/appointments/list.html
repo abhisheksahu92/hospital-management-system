@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Appointments | Hospital Management System</title>
+  </head>
+  <body>
+    <main>
+      <h1>{% if is_doctor %}My schedule{% else %}Appointments{% endif %}</h1>
+      <form method="get">
+        <label for="schedule-date">Date</label>
+        <input id="schedule-date" name="date" type="date" value="{{ selected_day|date:'Y-m-d' }}">
+        <button type="submit">Show day</button>
+      </form>
+      {% if is_reception %}<p><a href="{% url 'appointment_create' %}">Book appointment</a></p>{% endif %}
+      <h2>Schedule</h2>
+      <table>
+        <thead><tr><th>Time</th><th>Patient</th><th>Doctor</th><th>Visit</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for appointment in appointments %}
+            <tr>
+              <td>{{ appointment.scheduled_at|date:'H:i' }}</td>
+              <td>{{ appointment.patient.mrn }} — {{ appointment.patient.full_name }}</td>
+              <td>{{ appointment.doctor.user.get_full_name|default:appointment.doctor.user.username }}</td>
+              <td>{{ appointment.visit_type.name }}</td>
+              <td>{{ appointment.get_status_display }}</td>
+              <td>
+                {% if is_reception and appointment.status == 'scheduled' %}
+                  <a href="{% url 'appointment_reschedule' appointment.pk %}">Reschedule</a>
+                {% endif %}
+                {% if is_reception and appointment.status == 'scheduled' or is_reception and appointment.status == 'checked_in' %}
+                  <form method="post" action="{% url 'appointment_transition' appointment.pk %}">
+                    {% csrf_token %}
+                    {% if appointment.status == 'scheduled' %}<button name="action" value="check_in">Check in</button>{% endif %}
+                    <button name="action" value="cancel">Cancel</button>
+                    <button name="action" value="no_show">No-show</button>
+                  </form>
+                {% endif %}
+                {% if is_doctor and appointment.status == 'checked_in' or is_doctor and appointment.status == 'in_progress' %}
+                  <form method="post" action="{% url 'appointment_transition' appointment.pk %}">
+                    {% csrf_token %}
+                    {% if appointment.status == 'checked_in' %}<button name="action" value="start">Start consultation</button>{% endif %}
+                    {% if appointment.status == 'in_progress' %}<button name="action" value="complete">Complete</button>{% endif %}
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6">No appointments for this date.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <h2>Waiting queue</h2>
+      <ol>
+        {% for appointment in queue %}
+          <li>{{ appointment.patient.mrn }} — {{ appointment.patient.full_name }} ({{ appointment.doctor.user.get_full_name|default:appointment.doctor.user.username }})</li>
+        {% empty %}
+          <li>No checked-in patients waiting.</li>
+        {% endfor %}
+      </ol>
+    </main>
+  </body>
+</html>

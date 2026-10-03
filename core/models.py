@@ -151,6 +151,7 @@ class Appointment(TimestampedModel):
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
+    no_show_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         indexes = [
@@ -177,7 +178,12 @@ class Appointment(TimestampedModel):
                     ]
                 ),
                 name="appointment_status_valid",
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["doctor", "scheduled_at"],
+                condition=Q(status__in=["scheduled", "checked_in", "in_progress"]),
+                name="appointment_doctor_active_slot_unique",
+            ),
         ]
 
 

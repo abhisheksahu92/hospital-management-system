@@ -11,6 +11,8 @@
       <p>The application foundation is ready.</p>
       {% if user.is_authenticated %}
         <p>Signed in as {{ user.get_username }}</p>
+        {% if perms.core.view_patient %}<p><a href="{% url 'patient_list' %}">Patients</a></p>{% endif %}
+        {% if perms.core.view_appointment %}<p><a href="{% url 'appointment_list' %}">Appointments</a></p>{% endif %}
         <p><a href="{% url 'password_change' %}">Change password</a></p>
         <form method="post" action="{% url 'logout' %}">
           {% csrf_token %}

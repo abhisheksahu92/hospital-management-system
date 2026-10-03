@@ -29,7 +29,7 @@ from .models import (
     VisitType,
 )
 from .authorization import doctor_patient_queryset
-from .forms import PatientForm
+from .forms import AppointmentForm, PatientForm
 from .services.numbering import next_number
 
 
@@ -646,3 +646,252 @@ class PatientWorkflowTests(TestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertTrue(Patient.objects.filter(pk=patient.pk).exists())
+
+
+class AppointmentWorkflowTests(TestCase):
+    def setUp(self):
+        call_command("bootstrap_hospital", stdout=None)
+        self.reception = get_user_model().objects.create_user(
+            username="appointment-reception",
+            password="Synthetic-Password-123!",
+        )
+        self.reception.groups.add(Group.objects.get(name="Reception"))
+        StaffProfile.objects.create(
+            user=self.reception, employee_id="APPT-RECEPTION-001"
+        )
+        self.doctor = get_user_model().objects.create_user(
+            username="appointment-doctor", password="Synthetic-Password-123!"
+        )
+        self.doctor.groups.add(Group.objects.get(name="Doctor"))
+        self.doctor_profile = StaffProfile.objects.create(
+            user=self.doctor, employee_id="APPT-DOCTOR-001"
+        )
+        self.other_doctor = get_user_model().objects.create_user(
+            username="appointment-other-doctor"
+        )
+        self.other_profile = StaffProfile.objects.create(
+            user=self.other_doctor, employee_id="APPT-DOCTOR-002"
+        )
+        self.patient = Patient.objects.create(
+            mrn="APPT-PATIENT-001", full_name="Synthetic Appointment Patient"
+        )
+        self.visit_type = VisitType.objects.create(
+            code="APPT-VISIT", name="Synthetic Appointment Visit"
+        )
+
+    def make_appointment(
+        self,
+        *,
+        doctor=None,
+        patient=None,
+        hour=9,
+        status=Appointment.Status.SCHEDULED,
+    ):
+        return Appointment.objects.create(
+            patient=patient or self.patient,
+            doctor=doctor or self.doctor_profile,
+            visit_type=self.visit_type,
+            scheduled_at=f"2026-12-03T{hour:02}:00:00Z",
+            status=status,
+        )
+
+    def test_reception_books_appointment_with_server_controlled_status(self):
+        self.client.force_login(self.reception)
+
+        response = self.client.post(
+            reverse("appointment_create"),
+            {
+                "patient": self.patient.pk,
+                "doctor": self.doctor_profile.pk,
+                "visit_type": self.visit_type.pk,
+                "scheduled_at": "2026-12-03T14:30",
+                "status": "completed",
+            },
+        )
+
+        appointment = Appointment.objects.get(patient=self.patient)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(appointment.status, Appointment.Status.SCHEDULED)
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="appointment.created", target_id=str(appointment.pk)
+            ).exists()
+        )
+
+    def test_exact_active_doctor_slot_conflict_is_rejected(self):
+        self.make_appointment()
+        form = AppointmentForm(
+            data={
+                "patient": self.patient.pk,
+                "doctor": self.doctor_profile.pk,
+                "visit_type": self.visit_type.pk,
+                "scheduled_at": "2026-12-03T14:30",
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("scheduled_at", form.errors)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            self.make_appointment()
+
+    def test_reception_can_reschedule_and_change_is_audited(self):
+        appointment = self.make_appointment()
+        self.client.force_login(self.reception)
+
+        response = self.client.post(
+            reverse("appointment_reschedule", args=[appointment.pk]),
+            {
+                "patient": self.patient.pk,
+                "doctor": self.doctor_profile.pk,
+                "visit_type": self.visit_type.pk,
+                "scheduled_at": "2026-12-03T16:30",
+            },
+        )
+
+        appointment.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(appointment.scheduled_at.hour, 11)
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="appointment.rescheduled", target_id=str(appointment.pk)
+            ).exists()
+        )
+
+    def test_reschedule_into_occupied_slot_shows_conflict(self):
+        appointment = self.make_appointment()
+        other_patient = Patient.objects.create(
+            mrn="APPT-CONFLICT-002", full_name="Conflict Synthetic Patient"
+        )
+        self.make_appointment(patient=other_patient, hour=10)
+        self.client.force_login(self.reception)
+
+        response = self.client.post(
+            reverse("appointment_reschedule", args=[appointment.pk]),
+            {
+                "patient": self.patient.pk,
+                "doctor": self.doctor_profile.pk,
+                "visit_type": self.visit_type.pk,
+                "scheduled_at": "2026-12-03T15:30",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "already has an active appointment")
+
+    def test_doctor_schedule_contains_only_own_appointments(self):
+        own = self.make_appointment()
+        other_patient = Patient.objects.create(
+            mrn="APPT-PATIENT-002", full_name="Other Synthetic Patient"
+        )
+        other = self.make_appointment(
+            doctor=self.other_profile, patient=other_patient, hour=10
+        )
+        self.client.force_login(self.doctor)
+
+        response = self.client.get(reverse("appointment_list"), {"date": "2026-12-03"})
+
+        self.assertContains(response, own.patient.mrn)
+        self.assertNotContains(response, other.patient.mrn)
+
+    def test_check_in_start_complete_and_audit(self):
+        appointment = self.make_appointment()
+        self.client.force_login(self.reception)
+        response = self.client.post(
+            reverse("appointment_transition", args=[appointment.pk]),
+            {"action": "check_in"},
+        )
+        self.assertEqual(response.status_code, 302)
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, Appointment.Status.CHECKED_IN)
+        self.assertIsNotNone(appointment.checked_in_at)
+
+        self.client.force_login(self.doctor)
+        self.client.post(
+            reverse("appointment_transition", args=[appointment.pk]),
+            {"action": "start"},
+        )
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, Appointment.Status.IN_PROGRESS)
+        self.client.post(
+            reverse("appointment_transition", args=[appointment.pk]),
+            {"action": "complete"},
+        )
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, Appointment.Status.COMPLETED)
+        self.assertIsNotNone(appointment.completed_at)
+        self.assertEqual(
+            AuditEvent.objects.filter(
+                action="appointment.status_changed", target_id=str(appointment.pk)
+            ).count(),
+            3,
+        )
+
+    def test_reception_can_mark_no_show_and_timestamp_it(self):
+        appointment = self.make_appointment()
+        self.client.force_login(self.reception)
+
+        response = self.client.post(
+            reverse("appointment_transition", args=[appointment.pk]),
+            {"action": "no_show"},
+        )
+
+        appointment.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(appointment.status, Appointment.Status.NO_SHOW)
+        self.assertIsNotNone(appointment.no_show_at)
+
+    def test_invalid_transition_and_cross_doctor_post_are_rejected(self):
+        appointment = self.make_appointment(doctor=self.other_profile)
+        self.client.force_login(self.doctor)
+
+        response = self.client.post(
+            reverse("appointment_transition", args=[appointment.pk]),
+            {"action": "start"},
+        )
+        self.assertEqual(response.status_code, 404)
+
+        appointment.doctor = self.doctor_profile
+        appointment.save(update_fields=("doctor", "updated_at"))
+        response = self.client.post(
+            reverse("appointment_transition", args=[appointment.pk]),
+            {"action": "complete"},
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_queue_is_ordered_by_check_in_time(self):
+        first = self.make_appointment(hour=10, status=Appointment.Status.CHECKED_IN)
+        second_patient = Patient.objects.create(
+            mrn="APPT-QUEUE-002", full_name="Second Queue Patient"
+        )
+        second = self.make_appointment(
+            patient=second_patient, hour=11, status=Appointment.Status.CHECKED_IN
+        )
+        Appointment.objects.filter(pk=first.pk).update(
+            checked_in_at="2026-12-03T09:20:00Z"
+        )
+        Appointment.objects.filter(pk=second.pk).update(
+            checked_in_at="2026-12-03T09:10:00Z"
+        )
+        self.client.force_login(self.reception)
+
+        response = self.client.get(reverse("appointment_list"), {"date": "2026-12-03"})
+
+        queue_html = response.content.decode().split("<h2>Waiting queue</h2>", 1)[1]
+        self.assertLess(
+            queue_html.index(second.patient.mrn), queue_html.index(first.patient.mrn)
+        )
+
+    def test_pharmacy_cannot_view_or_change_appointments(self):
+        pharmacy = get_user_model().objects.create_user(username="appointment-pharmacy")
+        pharmacy.groups.add(Group.objects.get(name="Pharmacy"))
+        appointment = self.make_appointment()
+        self.client.force_login(pharmacy)
+
+        self.assertEqual(self.client.get(reverse("appointment_list")).status_code, 403)
+        self.assertEqual(
+            self.client.post(
+                reverse("appointment_transition", args=[appointment.pk]),
+                {"action": "cancel"},
+            ).status_code,
+            403,
+        )

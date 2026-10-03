@@ -30,6 +30,15 @@ record. This heuristic and the patient-field set require owner confirmation.
 - Approve queue numbering/reset boundaries, ordering, priority, and manual
 	override permissions.
 
+KAN-10 currently rejects an exact doctor/start-time collision, allows
+rescheduling only while scheduled, permits Reception to check in/cancel scheduled
+or checked-in visits and mark a scheduled visit no-show, and permits the assigned
+Doctor to start checked-in and complete in-progress visits. Its provisional
+waiting queue sorts by `checked_in_at` then appointment ID and does not assign a
+queue number. These choices do not resolve appointment duration/overlap,
+overbooking, late-arrival, priority, or queue-number policy; owner confirmation
+is still required.
+
 ## Clinical and prescription policy
 
 - Approve consultation fields, diagnosis representation, clinical history scope,
