@@ -1,4 +1,5 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+import uuid
 
 from django.contrib.auth.decorators import permission_required
 from django.contrib.auth.views import LoginView
@@ -7,7 +8,7 @@ from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -23,6 +24,7 @@ from .models import (
     Appointment,
     AuditEvent,
     Consultation,
+    Adjustment,
     Dispensing,
     DispensingLine,
     HospitalSettings,
@@ -33,8 +35,13 @@ from .models import (
     Patient,
     Payment,
     PaymentMethod,
+    PharmacySale,
+    PharmacySaleLine,
+    PharmacyReturn,
+    Refund,
     Prescription,
     PrescriptionItem,
+    ReturnLine,
     Service,
     StaffProfile,
     StockMovement,
@@ -51,7 +58,10 @@ def _login_throttle_key(request, username):
 class HospitalLoginView(LoginView):
     def dispatch(self, request, *args, **kwargs):
         username = (request.POST.get("username", "") or "").strip().lower()
-        if request.method == "POST" and cache.get(_login_throttle_key(request, username), 0) >= 5:
+        if (
+            request.method == "POST"
+            and cache.get(_login_throttle_key(request, username), 0) >= 5
+        ):
             response = HttpResponse(
                 "Too many failed login attempts. Please wait a few minutes and try again.",
                 status=429,
@@ -106,43 +116,189 @@ def _patient_read_queryset(user):
     raise PermissionDenied
 
 
+def _financial_actor(request):
+    if not _has_role(request.user, "Administrator"):
+        raise PermissionDenied
+    return get_object_or_404(StaffProfile, user=request.user)
+
+
+def _invoice_outstanding(invoice):
+    paid = invoice.payments.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+    refunded = Refund.objects.filter(
+        payment__invoice=invoice, status=Refund.Status.ISSUED
+    ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+    adjusted = invoice.adjustments.aggregate(total=Sum("amount"))["total"] or Decimal(
+        "0.00"
+    )
+    return invoice.total + adjusted - paid + refunded
+
+
+def _audit_financial_change(request, action, target, details):
+    AuditEvent.objects.create(
+        actor=StaffProfile.objects.filter(user=request.user).first(),
+        action=action,
+        target_type=target.__class__.__name__.lower(),
+        target_id=str(target.pk),
+        details=details,
+    )
+
+
+def _request_key(request):
+    try:
+        return uuid.UUID(request.POST.get("request_key", ""))
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
 @permission_required("core.add_invoice", raise_exception=True)
 def invoice_create(request):
+    is_reception = _has_role(request.user, "Reception")
+    is_admin = _has_role(request.user, "Administrator")
     if (
-        not _has_role(request.user, "Reception")
+        not (is_reception or is_admin)
         or not StaffProfile.objects.filter(user=request.user).exists()
     ):
         raise PermissionDenied
+    if request.method != "POST":
+        return HttpResponseBadRequest("Invoices require POST.")
 
     patient = get_object_or_404(
         Patient.objects.filter(archived_at__isnull=True),
         pk=request.POST.get("patient"),
     )
     service = get_object_or_404(Service, pk=request.POST.get("service"))
-    quantity = Decimal(request.POST.get("quantity", "1"))
-    unit_price = Decimal(request.POST.get("unit_price", service.current_charge or 0))
+    try:
+        quantity = Decimal(request.POST.get("quantity", "1"))
+        unit_price = Decimal(
+            request.POST.get("unit_price", service.current_charge or 0)
+        )
+        discount = Decimal(request.POST.get("discount_amount", "0.00"))
+    except InvalidOperation:
+        return HttpResponseBadRequest("Invoice amounts must be valid numbers.")
+    if (
+        not quantity.is_finite()
+        or not unit_price.is_finite()
+        or not discount.is_finite()
+        or quantity <= 0
+        or unit_price < 0
+        or discount < 0
+    ):
+        return HttpResponseBadRequest("Invoice amounts are outside the valid range.")
+    if discount and not is_admin:
+        raise PermissionDenied
+    reason = request.POST.get("reason", "").strip()
+    if discount and not reason:
+        return HttpResponseBadRequest("A reason is required for a discount.")
     description = request.POST.get("description", service.name).strip() or service.name
-    line_total = quantity * unit_price
+    subtotal = (quantity * unit_price).quantize(Decimal("0.01"))
+    if discount > subtotal:
+        return HttpResponseBadRequest("Discount cannot exceed the invoice subtotal.")
+    line_total = subtotal - discount
 
-    invoice = Invoice.objects.create(
-        number=next_number("INVOICE"),
-        patient=patient,
-        status=Invoice.Status.ISSUED,
-        subtotal=line_total,
-        total=line_total,
-        issued_at=timezone.now(),
-        created_by=StaffProfile.objects.get(user=request.user),
+    with transaction.atomic():
+        invoice = Invoice.objects.create(
+            number=next_number("INVOICE"),
+            patient=patient,
+            status=Invoice.Status.ISSUED,
+            subtotal=subtotal,
+            discount_total=discount,
+            tax_total=Decimal("0.00"),
+            total=line_total,
+            issued_at=timezone.now(),
+            created_by=StaffProfile.objects.get(user=request.user),
+        )
+        InvoiceLine.objects.create(
+            invoice=invoice,
+            service=service,
+            description=description,
+            quantity=quantity,
+            unit_price=unit_price,
+            discount_amount=discount,
+            line_total=line_total,
+        )
+        if discount:
+            _audit_financial_change(
+                request,
+                "financial.discount_applied",
+                invoice,
+                {"amount": str(discount), "reason": reason},
+            )
+    return redirect("invoice_detail", pk=invoice.pk)
+
+
+def invoice_detail(request, pk):
+    if (
+        not (
+            _has_role(request.user, "Reception")
+            or _has_role(request.user, "Administrator")
+        )
+        or not StaffProfile.objects.filter(user=request.user).exists()
+    ):
+        raise PermissionDenied
+    invoice = get_object_or_404(
+        Invoice.objects.select_related("patient").prefetch_related(
+            "lines", "payments__method", "adjustments", "payments__refunds"
+        ),
+        pk=pk,
     )
-    InvoiceLine.objects.create(
-        invoice=invoice,
-        service=service,
-        description=description,
-        quantity=quantity,
-        unit_price=unit_price,
-        discount_amount=Decimal("0.00"),
-        line_total=line_total,
+    pharmacy_returns = (
+        PharmacyReturn.objects.filter(
+            Q(lines__sale_line__sale__invoice=invoice)
+            | Q(lines__dispensing_line__dispensing__invoice=invoice),
+            status=PharmacyReturn.Status.PENDING,
+        )
+        .distinct()
+        .prefetch_related("lines")
     )
-    return redirect("patient_detail", pk=patient.pk)
+    for pharmacy_return in pharmacy_returns:
+        pharmacy_return.refund_total = pharmacy_return.lines.aggregate(
+            total=Sum("refund_amount")
+        )["total"] or Decimal("0.00")
+    return render(
+        request,
+        "core/billing/invoice_detail.html",
+        {
+            "invoice": invoice,
+            "outstanding": _invoice_outstanding(invoice),
+            "is_admin": _has_role(request.user, "Administrator"),
+            "is_reception": _has_role(request.user, "Reception"),
+            "payment_methods": PaymentMethod.objects.filter(is_active=True),
+            "can_back_to_patient": _has_role(request.user, "Reception")
+            and invoice.patient_id is not None,
+            "pharmacy_returns": pharmacy_returns,
+            "can_void": invoice.status == Invoice.Status.ISSUED
+            and not invoice.payments.exists()
+            and not invoice.adjustments.exists(),
+        },
+    )
+
+
+@permission_required("core.view_invoice", raise_exception=True)
+def invoice_list(request):
+    if (
+        not (
+            _has_role(request.user, "Reception")
+            or _has_role(request.user, "Administrator")
+        )
+        or not StaffProfile.objects.filter(user=request.user).exists()
+    ):
+        raise PermissionDenied
+    invoices = Invoice.objects.select_related("patient").order_by("-created_at")
+    query = request.GET.get("q", "").strip()
+    if query:
+        invoices = invoices.filter(
+            Q(number__icontains=query)
+            | Q(patient__mrn__icontains=query)
+            | Q(patient__full_name__icontains=query)
+        )
+    invoices = list(invoices)
+    for invoice in invoices:
+        invoice.balance = _invoice_outstanding(invoice)
+    return render(
+        request,
+        "core/billing/invoice_list.html",
+        {"invoices": invoices, "query": query},
+    )
 
 
 @permission_required("core.add_payment", raise_exception=True)
@@ -153,22 +309,230 @@ def payment_create(request, pk):
     ):
         raise PermissionDenied
 
-    invoice = get_object_or_404(Invoice, pk=pk)
-    method = get_object_or_404(PaymentMethod, pk=request.POST.get("method"))
-    amount = Decimal(request.POST.get("amount", "0"))
-    if amount <= 0:
-        raise PermissionDenied
+    if request.method != "POST":
+        return HttpResponseBadRequest("Payments require POST.")
 
-    Payment.objects.create(
-        receipt_number=next_number("RECEIPT"),
-        invoice=invoice,
-        method=method,
-        amount=amount,
-        reference=request.POST.get("reference", "").strip(),
-        received_by=StaffProfile.objects.get(user=request.user),
-        received_at=timezone.now(),
+    method = get_object_or_404(
+        PaymentMethod.objects.filter(is_active=True), pk=request.POST.get("method")
     )
-    return redirect("patient_detail", pk=invoice.patient_id)
+    try:
+        amount = Decimal(request.POST.get("amount", "0"))
+    except InvalidOperation:
+        return HttpResponseBadRequest("Payment amount must be a valid number.")
+    if not amount.is_finite() or amount <= 0:
+        return HttpResponseBadRequest("Payment amount must be positive.")
+
+    with transaction.atomic():
+        invoice = get_object_or_404(Invoice.objects.select_for_update(), pk=pk)
+        if invoice.status != Invoice.Status.ISSUED or amount > _invoice_outstanding(
+            invoice
+        ):
+            return HttpResponseBadRequest("Payment exceeds the invoice balance.")
+
+        Payment.objects.create(
+            receipt_number=next_number("RECEIPT"),
+            invoice=invoice,
+            method=method,
+            amount=amount,
+            reference=request.POST.get("reference", "").strip(),
+            received_by=StaffProfile.objects.get(user=request.user),
+            received_at=timezone.now(),
+        )
+    return redirect("invoice_detail", pk=invoice.pk)
+
+
+@permission_required("core.add_adjustment", raise_exception=True)
+def invoice_adjustment(request, pk):
+    actor = _financial_actor(request)
+    if request.method != "POST":
+        return HttpResponseBadRequest("Adjustments require POST.")
+    reason = request.POST.get("reason", "").strip()
+    if not reason:
+        return HttpResponseBadRequest("A reason is required.")
+    try:
+        amount = Decimal(request.POST.get("amount", "0"))
+    except InvalidOperation:
+        return HttpResponseBadRequest("Adjustment amount must be a valid number.")
+    kind = request.POST.get("kind", "adjustment")
+    if not amount.is_finite() or amount == 0 or kind not in {"discount", "adjustment"}:
+        return HttpResponseBadRequest("Adjustment amount or type is invalid.")
+    if kind == "discount":
+        if amount < 0:
+            return HttpResponseBadRequest("Discount amount must be positive.")
+        amount = -amount
+
+    with transaction.atomic():
+        invoice = get_object_or_404(Invoice.objects.select_for_update(), pk=pk)
+        if (
+            invoice.status != Invoice.Status.ISSUED
+            or _invoice_outstanding(invoice) + amount < 0
+        ):
+            return HttpResponseBadRequest("Adjustment would make the balance invalid.")
+        adjustment = Adjustment.objects.create(
+            invoice=invoice,
+            amount=amount,
+            reason=reason,
+            approved_by=actor,
+        )
+        _audit_financial_change(
+            request,
+            "financial.discount_applied"
+            if kind == "discount"
+            else "financial.adjustment_created",
+            adjustment,
+            {"invoice_id": invoice.pk, "amount": str(amount), "reason": reason},
+        )
+    return redirect("invoice_detail", pk=invoice.pk)
+
+
+@permission_required("core.add_refund", raise_exception=True)
+def invoice_refund(request, pk):
+    actor = _financial_actor(request)
+    if request.method != "POST":
+        return HttpResponseBadRequest("Refunds require POST.")
+    reason = request.POST.get("reason", "").strip()
+    if not reason:
+        return HttpResponseBadRequest("A reason is required.")
+    try:
+        amount = Decimal(request.POST.get("amount", "0"))
+    except InvalidOperation:
+        return HttpResponseBadRequest("Refund amount must be a valid number.")
+    if not amount.is_finite() or amount <= 0:
+        return HttpResponseBadRequest("Refund amount must be positive.")
+    payment_id = request.POST.get("payment")
+    pharmacy_return_id = request.POST.get("pharmacy_return")
+
+    with transaction.atomic():
+        invoice = get_object_or_404(Invoice.objects.select_for_update(), pk=pk)
+        payment = get_object_or_404(
+            Payment.objects.select_for_update().filter(invoice=invoice), pk=payment_id
+        )
+        already_refunded = payment.refunds.filter(
+            status=Refund.Status.ISSUED
+        ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+        pharmacy_return = None
+        if pharmacy_return_id:
+            pharmacy_return = get_object_or_404(
+                PharmacyReturn.objects.select_for_update(),
+                pk=pharmacy_return_id,
+                status=PharmacyReturn.Status.PENDING,
+            )
+            return_lines = ReturnLine.objects.filter(
+                pharmacy_return=pharmacy_return
+            ).filter(
+                Q(sale_line__sale__invoice=invoice)
+                | Q(dispensing_line__dispensing__invoice=invoice)
+            )
+            if not return_lines.exists():
+                raise PermissionDenied
+            return_total = return_lines.aggregate(total=Sum("refund_amount"))[
+                "total"
+            ] or Decimal("0.00")
+            if amount != return_total:
+                return HttpResponseBadRequest(
+                    "Refund amount must match the linked return request."
+                )
+        if (
+            invoice.status != Invoice.Status.ISSUED
+            or already_refunded + amount > payment.amount
+        ):
+            return HttpResponseBadRequest(
+                "Refund exceeds the refundable payment balance."
+            )
+        refund = Refund.objects.create(
+            payment=payment,
+            amount=amount,
+            reason=reason,
+            status=Refund.Status.ISSUED,
+            requested_by=actor,
+            approved_by=actor,
+            pharmacy_return=pharmacy_return,
+        )
+        if pharmacy_return:
+            pharmacy_return.status = PharmacyReturn.Status.APPROVED
+            pharmacy_return.save(update_fields=("status", "updated_at"))
+        _audit_financial_change(
+            request,
+            "financial.refund_issued",
+            refund,
+            {
+                "invoice_id": invoice.pk,
+                "payment_id": payment.pk,
+                "pharmacy_return_id": pharmacy_return.pk if pharmacy_return else None,
+                "amount": str(amount),
+                "reason": reason,
+            },
+        )
+    return redirect("invoice_detail", pk=invoice.pk)
+
+
+@permission_required("core.add_refund", raise_exception=True)
+def pharmacy_return_reject(request, pk):
+    actor = _financial_actor(request)
+    if request.method != "POST":
+        return HttpResponseBadRequest("Return decisions require POST.")
+    reason = request.POST.get("reason", "").strip()
+    if not reason:
+        return HttpResponseBadRequest("A rejection reason is required.")
+    with transaction.atomic():
+        pharmacy_return = get_object_or_404(
+            PharmacyReturn.objects.select_for_update(),
+            pk=pk,
+            status=PharmacyReturn.Status.PENDING,
+        )
+        if hasattr(pharmacy_return, "refund"):
+            return HttpResponseBadRequest("A refunded return cannot be rejected.")
+        pharmacy_return.status = PharmacyReturn.Status.REJECTED
+        pharmacy_return.save(update_fields=("status", "updated_at"))
+        AuditEvent.objects.create(
+            actor=actor,
+            action="pharmacy.return_rejected",
+            target_type="pharmacyreturn",
+            target_id=str(pharmacy_return.pk),
+            details={"reason": reason},
+        )
+        sale_invoice_id = (
+            pharmacy_return.lines.filter(sale_line__isnull=False)
+            .values_list("sale_line__sale__invoice_id", flat=True)
+            .first()
+        )
+        dispensing_invoice_id = (
+            pharmacy_return.lines.filter(dispensing_line__isnull=False)
+            .values_list("dispensing_line__dispensing__invoice_id", flat=True)
+            .first()
+        )
+        invoice_id = sale_invoice_id or dispensing_invoice_id
+    if invoice_id:
+        return redirect("invoice_detail", pk=invoice_id)
+    return redirect("pharmacy_prescription_list")
+
+
+@permission_required("core.void_invoice", raise_exception=True)
+def invoice_void(request, pk):
+    _financial_actor(request)
+    if request.method != "POST":
+        return HttpResponseBadRequest("Invoice voids require POST.")
+    reason = request.POST.get("reason", "").strip()
+    if not reason:
+        return HttpResponseBadRequest("A reason is required.")
+
+    with transaction.atomic():
+        invoice = get_object_or_404(Invoice.objects.select_for_update(), pk=pk)
+        if (
+            invoice.status != Invoice.Status.ISSUED
+            or invoice.payments.exists()
+            or invoice.adjustments.exists()
+        ):
+            return HttpResponseBadRequest("Only unsettled invoices can be voided.")
+        invoice.status = Invoice.Status.VOIDED
+        invoice.save(update_fields=("status", "updated_at"))
+        _audit_financial_change(
+            request,
+            "financial.invoice_voided",
+            invoice,
+            {"reason": reason},
+        )
+    return redirect("invoice_detail", pk=invoice.pk)
 
 
 def _audit_patient_change(request, patient, action, changed_fields):
@@ -242,6 +606,7 @@ def patient_create(request):
 @permission_required("core.view_patient", raise_exception=True)
 def patient_detail(request, pk):
     patient = get_object_or_404(_patient_read_queryset(request.user), pk=pk)
+    can_bill = _has_role(request.user, "Reception")
     return render(
         request,
         "core/patients/detail.html",
@@ -249,6 +614,13 @@ def patient_detail(request, pk):
             "patient": patient,
             "can_edit": _has_role(request.user, "Reception"),
             "can_view_clinical": _has_role(request.user, "Doctor"),
+            "can_bill": can_bill,
+            "invoices": patient.invoices.order_by("-created_at")
+            if can_bill
+            else Invoice.objects.none(),
+            "services": Service.objects.filter(is_active=True)
+            if can_bill
+            else Service.objects.none(),
         },
     )
 
@@ -614,42 +986,380 @@ def stock_receipt_create(request):
     if request.method != "POST":
         return HttpResponseBadRequest("Stock receipts require POST.")
 
+    request_key = _request_key(request)
+    if request_key is None:
+        return HttpResponseBadRequest("A valid request key is required.")
+
     supplier = get_object_or_404(Supplier, pk=request.POST.get("supplier"))
     medicine = get_object_or_404(Medicine, pk=request.POST.get("medicine"))
-    quantity_received = Decimal(request.POST.get("quantity_received", "0"))
+    try:
+        quantity_received = Decimal(request.POST.get("quantity_received", "0"))
+        purchase_price = Decimal(request.POST.get("purchase_price", "0.00"))
+        sale_price = Decimal(request.POST.get("sale_price", "0.00"))
+    except InvalidOperation:
+        return HttpResponseBadRequest("Receipt amounts must be valid numbers.")
+    if (
+        not quantity_received.is_finite()
+        or not purchase_price.is_finite()
+        or not sale_price.is_finite()
+        or quantity_received <= 0
+        or purchase_price < 0
+        or sale_price < 0
+    ):
+        return HttpResponseBadRequest("Receipt amounts are outside the valid range.")
+    if StockMovement.objects.filter(request_key=request_key).exists():
+        return redirect("pharmacy_prescription_list")
+
     if quantity_received <= 0:
         return HttpResponseBadRequest("Quantity received must be positive.")
 
-    expiry_date = request.POST.get("expiry_date")
+    expiry_date = parse_date(request.POST.get("expiry_date", ""))
     if not expiry_date:
-        return HttpResponseBadRequest("Expiry date is required.")
+        return HttpResponseBadRequest("A valid expiry date is required.")
 
-    receipt = StockReceipt.objects.create(
-        number=next_number("STOCK_RECEIPT"),
-        supplier=supplier,
-        received_at=timezone.now(),
-        received_by=StaffProfile.objects.get(user=request.user),
+    with transaction.atomic():
+        receipt = StockReceipt.objects.create(
+            number=next_number("STOCK_RECEIPT"),
+            supplier=supplier,
+            supplier_reference=request.POST.get("supplier_reference", "").strip(),
+            received_at=timezone.now(),
+            received_by=StaffProfile.objects.get(user=request.user),
+        )
+        batch = MedicineBatch.objects.create(
+            medicine=medicine,
+            receipt=receipt,
+            batch_number=request.POST.get("batch_number", "").strip()
+            or "BATCH-UNKNOWN",
+            expiry_date=expiry_date,
+            purchase_price=purchase_price,
+            sale_price=sale_price,
+            quantity_received=quantity_received,
+            quantity_on_hand=quantity_received,
+        )
+        StockMovement.objects.create(
+            batch=batch,
+            kind=StockMovement.Kind.RECEIPT,
+            quantity_delta=quantity_received,
+            quantity_before=Decimal("0"),
+            quantity_after=quantity_received,
+            reference_type="stock_receipt",
+            reference_id=str(receipt.pk),
+            request_key=request_key,
+            actor=StaffProfile.objects.get(user=request.user),
+        )
+    return redirect("pharmacy_prescription_list")
+
+
+@permission_required("core.add_pharmacysale", raise_exception=True)
+def pharmacy_sale_create(request):
+    if not _has_role(request.user, "Pharmacy"):
+        raise PermissionDenied
+    if request.method != "POST":
+        return HttpResponseBadRequest("Counter sales require POST.")
+    request_key = _request_key(request)
+    if request_key is None:
+        return HttpResponseBadRequest("A valid request key is required.")
+    existing = StockMovement.objects.filter(request_key=request_key).first()
+    if existing:
+        if existing.kind == StockMovement.Kind.SALE:
+            return redirect("pharmacy_sale_detail", pk=existing.reference_id)
+        return HttpResponse("Request key already used.", status=409)
+    try:
+        quantity = Decimal(request.POST.get("quantity", "0"))
+    except InvalidOperation:
+        return HttpResponseBadRequest("Sale quantity must be a valid number.")
+    if not quantity.is_finite() or quantity <= 0:
+        return HttpResponseBadRequest("Sale quantity must be positive.")
+
+    with transaction.atomic():
+        batch = get_object_or_404(
+            MedicineBatch.objects.select_for_update().select_related("medicine"),
+            pk=request.POST.get("batch"),
+        )
+        medicine = batch.medicine
+        if not medicine.is_active or not medicine.is_otc:
+            return HttpResponseBadRequest("This medicine is not approved for OTC sale.")
+        if batch.expiry_date < timezone.localdate():
+            return HttpResponseBadRequest("Expired stock cannot be sold.")
+        if batch.is_quarantined:
+            return HttpResponseBadRequest("Quarantined stock cannot be sold.")
+        if batch.quantity_on_hand < quantity:
+            return HttpResponseBadRequest("Insufficient stock available for sale.")
+        if StockMovement.objects.filter(request_key=request_key).exists():
+            return redirect("pharmacy_prescription_list")
+
+        actor = StaffProfile.objects.get(user=request.user)
+        total = (batch.sale_price * quantity).quantize(Decimal("0.01"))
+        invoice = Invoice.objects.create(
+            number=next_number("INVOICE"),
+            patient=None,
+            status=Invoice.Status.ISSUED,
+            subtotal=total,
+            tax_total=Decimal("0.00"),
+            total=total,
+            issued_at=timezone.now(),
+            created_by=actor,
+        )
+        InvoiceLine.objects.create(
+            invoice=invoice,
+            description=f"{medicine.generic_name} {medicine.strength}".strip(),
+            quantity=quantity,
+            unit_price=batch.sale_price,
+            discount_amount=Decimal("0.00"),
+            line_total=total,
+        )
+        sale = PharmacySale.objects.create(
+            number=next_number("PHARMACY_SALE"),
+            invoice=invoice,
+            status=PharmacySale.Status.ISSUED,
+            sold_at=timezone.now(),
+            sold_by=actor,
+        )
+        line = PharmacySaleLine.objects.create(
+            sale=sale,
+            batch=batch,
+            quantity=quantity,
+            unit_price=batch.sale_price,
+            line_total=total,
+        )
+        before = batch.quantity_on_hand
+        batch.quantity_on_hand = before - quantity
+        batch.save(update_fields=("quantity_on_hand", "updated_at"))
+        StockMovement.objects.create(
+            batch=batch,
+            kind=StockMovement.Kind.SALE,
+            quantity_delta=-quantity,
+            quantity_before=before,
+            quantity_after=before - quantity,
+            reference_type="pharmacy_sale",
+            reference_id=str(sale.pk),
+            request_key=request_key,
+            actor=actor,
+        )
+        AuditEvent.objects.create(
+            actor=actor,
+            action="pharmacy.sale_created",
+            target_type="pharmacysale",
+            target_id=str(sale.pk),
+            details={"invoice_id": invoice.pk, "line_id": line.pk},
+        )
+    return redirect("pharmacy_sale_detail", pk=sale.pk)
+
+
+@permission_required("core.view_pharmacysale", raise_exception=True)
+def pharmacy_sale_detail(request, pk):
+    if not _has_role(request.user, "Pharmacy"):
+        raise PermissionDenied
+    sale = get_object_or_404(
+        PharmacySale.objects.select_related("invoice").prefetch_related(
+            "lines__batch__medicine"
+        ),
+        pk=pk,
     )
-    batch = MedicineBatch.objects.create(
-        medicine=medicine,
-        receipt=receipt,
-        batch_number=request.POST.get("batch_number", "").strip() or "BATCH-UNKNOWN",
-        expiry_date=expiry_date,
-        purchase_price=Decimal(request.POST.get("purchase_price", "0.00")),
-        sale_price=Decimal(request.POST.get("sale_price", "0.00")),
-        quantity_received=quantity_received,
-        quantity_on_hand=quantity_received,
+    for line in sale.lines.all():
+        returned = ReturnLine.objects.filter(
+            sale_line=line,
+            pharmacy_return__status__in=[
+                PharmacyReturn.Status.PENDING,
+                PharmacyReturn.Status.APPROVED,
+            ],
+        ).aggregate(total=Sum("quantity"))["total"] or Decimal("0.000")
+        line.returnable_quantity = line.quantity - returned
+        line.request_key = uuid.uuid4()
+    return render(
+        request,
+        "core/pharmacy/sale_detail.html",
+        {"sale": sale, "lines": sale.lines.all()},
     )
-    StockMovement.objects.create(
-        batch=batch,
-        kind=StockMovement.Kind.RECEIPT,
-        quantity_delta=quantity_received,
-        quantity_before=Decimal("0"),
-        quantity_after=quantity_received,
-        reference_type="stock_receipt",
-        reference_id=str(receipt.pk),
-        actor=StaffProfile.objects.get(user=request.user),
+
+
+@permission_required("core.add_pharmacyreturn", raise_exception=True)
+def pharmacy_return_create(request):
+    if not _has_role(request.user, "Pharmacy"):
+        raise PermissionDenied
+    if request.method != "POST":
+        return HttpResponseBadRequest("Returns require POST.")
+    request_key = _request_key(request)
+    if request_key is None:
+        return HttpResponseBadRequest("A valid request key is required.")
+    existing = PharmacyReturn.objects.filter(request_key=request_key).first()
+    if existing:
+        line = existing.lines.first()
+        if line and line.sale_line_id:
+            return redirect("pharmacy_sale_detail", pk=line.sale_line.sale_id)
+        return redirect("pharmacy_prescription_list")
+    reason = request.POST.get("reason", "").strip()
+    if not reason:
+        return HttpResponseBadRequest("A return reason is required.")
+    try:
+        quantity = Decimal(request.POST.get("quantity", "0"))
+    except InvalidOperation:
+        return HttpResponseBadRequest("Return quantity must be a valid number.")
+    if not quantity.is_finite() or quantity <= 0:
+        return HttpResponseBadRequest("Return quantity must be positive.")
+    sale_line_id = request.POST.get("sale_line", "").strip()
+    dispensing_line_id = request.POST.get("dispensing_line", "").strip()
+    if bool(sale_line_id) == bool(dispensing_line_id):
+        return HttpResponseBadRequest(
+            "Select exactly one originating transaction line."
+        )
+
+    with transaction.atomic():
+        if sale_line_id:
+            source = get_object_or_404(
+                PharmacySaleLine.objects.select_for_update().select_related("sale"),
+                pk=sale_line_id,
+            )
+            source_field = "sale_line"
+            if source.sale.status != PharmacySale.Status.ISSUED:
+                return HttpResponseBadRequest("Only issued sales can be returned.")
+            patient = source.sale.patient
+            unit_price = source.unit_price
+            source_quantity = source.quantity
+            redirect_url = ("pharmacy_sale_detail", source.sale_id)
+        else:
+            source = get_object_or_404(
+                DispensingLine.objects.select_for_update().select_related(
+                    "dispensing__prescription"
+                ),
+                pk=dispensing_line_id,
+            )
+            source_field = "dispensing_line"
+            if source.dispensing.status != Dispensing.Status.COMPLETED:
+                return HttpResponseBadRequest(
+                    "Only completed dispensing can be returned."
+                )
+            patient = source.dispensing.patient
+            unit_price = source.unit_price
+            source_quantity = source.quantity
+            redirect_url = ("pharmacy_prescription_list", None)
+        returned = ReturnLine.objects.filter(
+            **{source_field: source},
+            pharmacy_return__status__in=[
+                PharmacyReturn.Status.PENDING,
+                PharmacyReturn.Status.APPROVED,
+            ],
+        ).aggregate(total=Sum("quantity"))["total"] or Decimal("0.000")
+        if returned + quantity > source_quantity:
+            return HttpResponseBadRequest(
+                "Return exceeds the unreturned transaction quantity."
+            )
+        actor = StaffProfile.objects.get(user=request.user)
+        pharmacy_return = PharmacyReturn.objects.create(
+            number=next_number("PHARMACY_RETURN"),
+            patient=patient,
+            reason=reason,
+            status=PharmacyReturn.Status.PENDING,
+            created_by=actor,
+            request_key=request_key,
+        )
+        line = ReturnLine.objects.create(
+            pharmacy_return=pharmacy_return,
+            quantity=quantity,
+            refund_amount=(unit_price * quantity).quantize(Decimal("0.01")),
+            **{source_field: source},
+        )
+        AuditEvent.objects.create(
+            actor=actor,
+            action="pharmacy.return_requested",
+            target_type="pharmacyreturn",
+            target_id=str(pharmacy_return.pk),
+            details={
+                "source_type": source_field,
+                "source_id": source.pk,
+                "line_id": line.pk,
+                "quantity": str(quantity),
+                "reason": reason,
+            },
+        )
+    return redirect(
+        redirect_url[0], **({"pk": redirect_url[1]} if redirect_url[1] else {})
     )
+
+
+@permission_required("core.adjust_stock", raise_exception=True)
+def stock_adjustment(request, pk):
+    if not _has_role(request.user, "Pharmacy"):
+        raise PermissionDenied
+    if request.method != "POST":
+        return HttpResponseBadRequest("Stock adjustments require POST.")
+    request_key = _request_key(request)
+    if request_key is None:
+        return HttpResponseBadRequest("A valid request key is required.")
+    reason = request.POST.get("reason", "").strip()
+    if not reason:
+        return HttpResponseBadRequest("A reason is required.")
+    try:
+        delta = Decimal(request.POST.get("quantity_delta", "0"))
+    except InvalidOperation:
+        return HttpResponseBadRequest("Stock adjustment must be a valid number.")
+    if not delta.is_finite() or delta == 0:
+        return HttpResponseBadRequest("Stock adjustment must be nonzero.")
+    if StockMovement.objects.filter(request_key=request_key).exists():
+        return redirect("pharmacy_prescription_list")
+
+    with transaction.atomic():
+        batch = get_object_or_404(MedicineBatch.objects.select_for_update(), pk=pk)
+        if StockMovement.objects.filter(request_key=request_key).exists():
+            return redirect("pharmacy_prescription_list")
+        before = batch.quantity_on_hand
+        after = before + delta
+        if after < 0:
+            return HttpResponseBadRequest("Adjustment cannot make stock negative.")
+        batch.quantity_on_hand = after
+        batch.save(update_fields=("quantity_on_hand", "updated_at"))
+        audit = AuditEvent.objects.create(
+            actor=StaffProfile.objects.get(user=request.user),
+            action="stock.adjusted",
+            target_type="medicinebatch",
+            target_id=str(batch.pk),
+            details={"reason": reason, "quantity_delta": str(delta)},
+        )
+        StockMovement.objects.create(
+            batch=batch,
+            kind=StockMovement.Kind.ADJUSTMENT,
+            quantity_delta=delta,
+            quantity_before=before,
+            quantity_after=after,
+            reference_type="audit_event",
+            reference_id=str(audit.pk),
+            request_key=request_key,
+            actor=audit.actor,
+        )
+    return redirect("pharmacy_prescription_list")
+
+
+@permission_required("core.adjust_stock", raise_exception=True)
+def batch_quarantine(request, pk):
+    if not _has_role(request.user, "Pharmacy"):
+        raise PermissionDenied
+    if request.method != "POST":
+        return HttpResponseBadRequest("Quarantine changes require POST.")
+    request_key = _request_key(request)
+    if request_key is None:
+        return HttpResponseBadRequest("A valid request key is required.")
+    reason = request.POST.get("reason", "").strip()
+    value = request.POST.get("is_quarantined", "")
+    if not reason or value not in {"true", "false"}:
+        return HttpResponseBadRequest("A reason and quarantine state are required.")
+    if AuditEvent.objects.filter(details__request_key=str(request_key)).exists():
+        return redirect("pharmacy_prescription_list")
+
+    with transaction.atomic():
+        batch = get_object_or_404(MedicineBatch.objects.select_for_update(), pk=pk)
+        batch.is_quarantined = value == "true"
+        batch.save(update_fields=("is_quarantined", "updated_at"))
+        AuditEvent.objects.create(
+            actor=StaffProfile.objects.get(user=request.user),
+            action=(
+                "stock.quarantined"
+                if batch.is_quarantined
+                else "stock.quarantine_released"
+            ),
+            target_type="medicinebatch",
+            target_id=str(batch.pk),
+            details={"reason": reason, "request_key": str(request_key)},
+        )
     return redirect("pharmacy_prescription_list")
 
 
@@ -659,55 +1369,111 @@ def dispense_prescription(request, prescription_id):
         raise PermissionDenied
     if request.method != "POST":
         return HttpResponseBadRequest("Dispensing requires POST.")
+    request_key = _request_key(request)
+    if request_key is None:
+        return HttpResponseBadRequest("A valid request key is required.")
+    existing = StockMovement.objects.filter(request_key=request_key).first()
+    if existing:
+        if existing.kind == StockMovement.Kind.DISPENSE:
+            return redirect("pharmacy_prescription_list")
+        return HttpResponse("Request key already used.", status=409)
 
     prescription = get_object_or_404(
         Prescription.objects.filter(status=Prescription.Status.ISSUED),
         pk=prescription_id,
     )
-    item = get_object_or_404(
-        PrescriptionItem.objects.filter(prescription=prescription),
-        pk=request.POST.get("prescription_item"),
-    )
-    batch = get_object_or_404(
-        MedicineBatch.objects.filter(medicine=item.medicine),
-        pk=request.POST.get("batch"),
-    )
-    quantity = Decimal(request.POST.get("quantity", "0"))
-    if quantity <= 0:
+    try:
+        quantity = Decimal(request.POST.get("quantity", "0"))
+    except InvalidOperation:
+        return HttpResponseBadRequest("Dispensed quantity must be a valid number.")
+    if not quantity.is_finite() or quantity <= 0:
         return HttpResponseBadRequest("Dispensed quantity must be positive.")
-    if quantity > item.quantity:
-        return HttpResponseBadRequest("Dispensed quantity exceeds the prescription amount.")
-    if batch.quantity_on_hand < quantity:
-        return HttpResponseBadRequest("Insufficient stock available for this batch.")
 
-    dispensing = Dispensing.objects.create(
-        number=next_number("DISPENSING"),
-        prescription=prescription,
-        patient=prescription.patient,
-        dispensed_by=StaffProfile.objects.get(user=request.user),
-        status=Dispensing.Status.COMPLETED,
-        dispensed_at=timezone.now(),
-    )
-    DispensingLine.objects.create(
-        dispensing=dispensing,
-        prescription_item=item,
-        batch=batch,
-        quantity=quantity,
-        unit_price=batch.sale_price,
-    )
-    before = batch.quantity_on_hand
-    batch.quantity_on_hand = before - quantity
-    batch.save(update_fields=("quantity_on_hand", "updated_at"))
-    StockMovement.objects.create(
-        batch=batch,
-        kind=StockMovement.Kind.DISPENSE,
-        quantity_delta=-quantity,
-        quantity_before=before,
-        quantity_after=before - quantity,
-        reference_type="dispensing",
-        reference_id=str(dispensing.pk),
-        actor=StaffProfile.objects.get(user=request.user),
-    )
+    with transaction.atomic():
+        item = get_object_or_404(
+            PrescriptionItem.objects.select_for_update().filter(
+                prescription=prescription
+            ),
+            pk=request.POST.get("prescription_item"),
+        )
+        if StockMovement.objects.filter(request_key=request_key).exists():
+            return redirect("pharmacy_prescription_list")
+        batch = get_object_or_404(
+            MedicineBatch.objects.select_for_update().filter(medicine=item.medicine),
+            pk=request.POST.get("batch"),
+        )
+        if batch.expiry_date < timezone.localdate():
+            return HttpResponseBadRequest("Expired stock cannot be dispensed.")
+        if batch.is_quarantined:
+            return HttpResponseBadRequest("Quarantined stock cannot be dispensed.")
+        dispensed = DispensingLine.objects.filter(
+            prescription_item=item,
+            dispensing__status__in=[
+                Dispensing.Status.PARTIAL,
+                Dispensing.Status.COMPLETED,
+            ],
+        ).aggregate(total=Sum("quantity"))["total"] or Decimal("0.000")
+        if dispensed + quantity > item.quantity:
+            return HttpResponseBadRequest(
+                "Dispensed quantity exceeds the remaining prescription amount."
+            )
+        if batch.quantity_on_hand < quantity:
+            return HttpResponseBadRequest(
+                "Insufficient stock available for this batch."
+            )
+
+        actor = StaffProfile.objects.get(user=request.user)
+        invoice_total = (batch.sale_price * quantity).quantize(Decimal("0.01"))
+        invoice = Invoice.objects.create(
+            number=next_number("INVOICE"),
+            patient=prescription.patient,
+            status=Invoice.Status.ISSUED,
+            subtotal=invoice_total,
+            tax_total=Decimal("0.00"),
+            total=invoice_total,
+            issued_at=timezone.now(),
+            created_by=actor,
+        )
+        InvoiceLine.objects.create(
+            invoice=invoice,
+            description=(
+                f"{item.medicine.generic_name} {item.medicine.strength}".strip()
+            ),
+            quantity=quantity,
+            unit_price=batch.sale_price,
+            discount_amount=Decimal("0.00"),
+            line_total=invoice_total,
+        )
+        dispensing = Dispensing.objects.create(
+            number=next_number("DISPENSING"),
+            prescription=prescription,
+            invoice=invoice,
+            patient=prescription.patient,
+            dispensed_by=actor,
+            status=Dispensing.Status.COMPLETED,
+            dispensed_at=timezone.now(),
+        )
+        DispensingLine.objects.create(
+            dispensing=dispensing,
+            prescription_item=item,
+            batch=batch,
+            quantity=quantity,
+            unit_price=batch.sale_price,
+        )
+        before = batch.quantity_on_hand
+        batch.quantity_on_hand = before - quantity
+        batch.save(update_fields=("quantity_on_hand", "updated_at"))
+        StockMovement.objects.create(
+            batch=batch,
+            kind=StockMovement.Kind.DISPENSE,
+            quantity_delta=-quantity,
+            quantity_before=before,
+            quantity_after=before - quantity,
+            reference_type="dispensing",
+            reference_id=str(dispensing.pk),
+            request_key=request_key,
+            actor=actor,
+        )
     return redirect("pharmacy_prescription_list")
 
 
@@ -723,13 +1489,65 @@ def pharmacy_prescription_list(request):
             | Q(patient__mrn__icontains=query)
             | Q(patient__full_name__icontains=query)
         )
+    prescriptions = list(
+        prescriptions.select_related("patient").prefetch_related("items__medicine")
+    )
+    for prescription in prescriptions:
+        for item in prescription.items.all():
+            item.request_key = uuid.uuid4()
+            dispensed = DispensingLine.objects.filter(
+                prescription_item=item,
+                dispensing__status__in=[
+                    Dispensing.Status.PARTIAL,
+                    Dispensing.Status.COMPLETED,
+                ],
+            ).aggregate(total=Sum("quantity"))["total"] or Decimal("0.000")
+            item.remaining_quantity = item.quantity - dispensed
+            item.available_batches = MedicineBatch.objects.filter(
+                medicine=item.medicine,
+                expiry_date__gte=timezone.localdate(),
+                is_quarantined=False,
+                quantity_on_hand__gt=0,
+            ).order_by("expiry_date", "pk")
+            item.dispensing_lines = DispensingLine.objects.filter(
+                prescription_item=item
+            ).select_related("dispensing")
+            for line in item.dispensing_lines:
+                returned = ReturnLine.objects.filter(
+                    dispensing_line=line,
+                    pharmacy_return__status__in=[
+                        PharmacyReturn.Status.PENDING,
+                        PharmacyReturn.Status.APPROVED,
+                    ],
+                ).aggregate(total=Sum("quantity"))["total"] or Decimal("0.000")
+                line.returnable_quantity = line.quantity - returned
+                line.return_request_key = uuid.uuid4()
+
+    stock_batches = list(
+        MedicineBatch.objects.select_related("medicine").order_by(
+            "medicine__generic_name", "expiry_date", "pk"
+        )
+    )
+    for batch in stock_batches:
+        batch.adjust_request_key = uuid.uuid4()
+        batch.quarantine_request_key = uuid.uuid4()
+
     return render(
         request,
         "core/clinical/pharmacy_prescriptions.html",
         {
-            "prescriptions": prescriptions.select_related("patient").prefetch_related(
-                "items__medicine"
-            ),
+            "prescriptions": prescriptions,
+            "stock_batches": stock_batches,
+            "otc_batches": MedicineBatch.objects.filter(
+                medicine__is_active=True,
+                medicine__is_otc=True,
+                expiry_date__gte=timezone.localdate(),
+                is_quarantined=False,
+                quantity_on_hand__gt=0,
+            )
+            .select_related("medicine")
+            .order_by("expiry_date", "pk"),
+            "sale_request_key": uuid.uuid4(),
             "query": query,
         },
     )

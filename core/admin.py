@@ -128,6 +128,6 @@ class SupplierAdmin(admin.ModelAdmin):
 
 @admin.register(Medicine)
 class MedicineAdmin(admin.ModelAdmin):
-    list_display = ("code", "generic_name", "brand_name", "unit", "is_active")
-    list_filter = ("is_active", "dosage_form")
+    list_display = ("code", "generic_name", "brand_name", "unit", "is_otc", "is_active")
+    list_filter = ("is_active", "is_otc", "dosage_form")
     search_fields = ("code", "generic_name", "brand_name", "barcode")

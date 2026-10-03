@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core import mail
 from django.db import IntegrityError, transaction
+from django.db.models import Sum
 from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
@@ -13,19 +14,26 @@ from django.utils import timezone
 
 from .models import (
     Appointment,
+    Adjustment,
     AuditEvent,
     Consultation,
     Department,
     HospitalSettings,
+    DispensingLine,
     Invoice,
     InvoiceLine,
     Medicine,
     MedicineBatch,
     NumberSequence,
     Patient,
+    Payment,
     PaymentMethod,
+    PharmacyReturn,
+    PharmacySale,
+    PharmacySaleLine,
     Prescription,
     PrescriptionItem,
+    Refund,
     Service,
     StaffProfile,
     Dispensing,
@@ -33,6 +41,7 @@ from .models import (
     StockReceipt,
     Supplier,
     VisitType,
+    ReturnLine,
 )
 from .authorization import doctor_patient_queryset
 from .forms import AppointmentForm, PatientForm
@@ -433,6 +442,178 @@ class BillingWorkflowTests(TestCase):
         self.assertEqual(payment.amount, Decimal("500.00"))
         self.assertEqual(payment.reference, "CASH-001")
 
+    def test_payment_cannot_exceed_invoice_balance(self):
+        invoice = Invoice.objects.create(
+            number="OVERPAY-001",
+            patient=self.patient,
+            status=Invoice.Status.ISSUED,
+            total=Decimal("500.00"),
+        )
+        self.client.force_login(self.reception)
+
+        response = self.client.post(
+            reverse("payment_create", args=[invoice.pk]),
+            {"method": self.method.pk, "amount": "500.01"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(invoice.payments.exists())
+
+    def _create_administrator(self):
+        user = get_user_model().objects.create_user(
+            username="billing-administrator",
+            password="Synthetic-Password-123!",
+        )
+        user.groups.add(Group.objects.get(name="Administrator"))
+        profile = StaffProfile.objects.create(
+            user=user,
+            employee_id="BILL-ADMIN-001",
+        )
+        return user, profile
+
+    def test_admin_discount_is_reasoned_audited_and_tax_defaults_to_zero(self):
+        administrator, _ = self._create_administrator()
+        self.client.force_login(administrator)
+
+        response = self.client.post(
+            reverse("invoice_create"),
+            {
+                "patient": self.patient.pk,
+                "service": self.service.pk,
+                "quantity": "1",
+                "unit_price": "500.00",
+                "discount_amount": "25.00",
+                "reason": "Approved synthetic discount",
+            },
+        )
+
+        invoice = Invoice.objects.get(patient=self.patient)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(invoice.total, Decimal("475.00"))
+        self.assertEqual(invoice.tax_total, Decimal("0.00"))
+        self.assertEqual(invoice.lines.get().discount_amount, Decimal("25.00"))
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="financial.discount_applied",
+                target_id=str(invoice.pk),
+                details__reason="Approved synthetic discount",
+            ).exists()
+        )
+
+    def test_adjustment_and_refund_are_audited_and_change_balance(self):
+        administrator, profile = self._create_administrator()
+        invoice = Invoice.objects.create(
+            number="CONTROLLED-001",
+            patient=self.patient,
+            status=Invoice.Status.ISSUED,
+            total=Decimal("500.00"),
+        )
+        payment = Payment.objects.create(
+            receipt_number="CONTROLLED-REC-001",
+            invoice=invoice,
+            method=self.method,
+            amount=Decimal("500.00"),
+            received_at=timezone.now(),
+        )
+        self.client.force_login(administrator)
+
+        response = self.client.post(
+            reverse("invoice_refund", args=[invoice.pk]),
+            {"payment": payment.pk, "amount": "50.00", "reason": "Synthetic refund"},
+        )
+        self.assertEqual(response.status_code, 302)
+        refund = Refund.objects.get(payment=payment)
+        self.assertEqual(refund.status, Refund.Status.ISSUED)
+        self.assertEqual(refund.approved_by, profile)
+        self.assertEqual(
+            AuditEvent.objects.filter(action="financial.refund_issued").count(), 1
+        )
+
+        response = self.client.post(
+            reverse("invoice_adjustment", args=[invoice.pk]),
+            {"kind": "adjustment", "amount": "20.00", "reason": "Synthetic correction"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            Adjustment.objects.get(invoice=invoice).amount, Decimal("20.00")
+        )
+        self.assertEqual(
+            AuditEvent.objects.filter(action="financial.adjustment_created").count(), 1
+        )
+        self.assertEqual(
+            invoice.payments.get().refunds.get().reason, "Synthetic refund"
+        )
+
+    def test_reception_cannot_discount_or_void_invoice(self):
+        self.client.force_login(self.reception)
+        response = self.client.post(
+            reverse("invoice_create"),
+            {
+                "patient": self.patient.pk,
+                "service": self.service.pk,
+                "quantity": "1",
+                "unit_price": "500.00",
+                "discount_amount": "10.00",
+                "reason": "Unauthorized discount",
+            },
+        )
+        self.assertEqual(response.status_code, 403)
+
+        invoice = Invoice.objects.create(
+            number="NO-RECEPTION-VOID",
+            patient=self.patient,
+            status=Invoice.Status.ISSUED,
+            total=Decimal("10.00"),
+        )
+        response = self.client.post(
+            reverse("invoice_void", args=[invoice.pk]),
+            {"reason": "Unauthorized void"},
+        )
+        self.assertEqual(response.status_code, 403)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.status, Invoice.Status.ISSUED)
+
+    def test_invoice_detail_renders_reception_payment_controls(self):
+        invoice = Invoice.objects.create(
+            number="DETAIL-001",
+            patient=self.patient,
+            status=Invoice.Status.ISSUED,
+            total=Decimal("100.00"),
+        )
+        self.client.force_login(self.reception)
+
+        response = self.client.get(reverse("invoice_detail", args=[invoice.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Record payment")
+        self.assertContains(response, "100.00")
+
+    def test_admin_can_void_unsettled_invoice_with_reason(self):
+        administrator, _ = self._create_administrator()
+        invoice = Invoice.objects.create(
+            number="VOID-001",
+            patient=self.patient,
+            status=Invoice.Status.ISSUED,
+            total=Decimal("10.00"),
+        )
+        self.client.force_login(administrator)
+
+        response = self.client.post(
+            reverse("invoice_void", args=[invoice.pk]),
+            {"reason": "Duplicate synthetic invoice"},
+        )
+
+        invoice.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(invoice.status, Invoice.Status.VOIDED)
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="financial.invoice_voided",
+                target_id=str(invoice.pk),
+                details__reason="Duplicate synthetic invoice",
+            ).exists()
+        )
+
 
 class PharmacyWorkflowTests(TestCase):
     def setUp(self):
@@ -500,6 +681,7 @@ class PharmacyWorkflowTests(TestCase):
             {
                 "supplier": self.supplier.pk,
                 "medicine": self.medicine.pk,
+                "request_key": "00000000-0000-0000-0000-000000000001",
                 "batch_number": "BATCH-001",
                 "expiry_date": "2028-12-31",
                 "purchase_price": "1.00",
@@ -511,6 +693,23 @@ class PharmacyWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 302)
         batch = MedicineBatch.objects.get(batch_number="BATCH-001")
         self.assertEqual(batch.quantity_on_hand, Decimal("10"))
+        duplicate_receipt = self.client.post(
+            reverse("stock_receipt_create"),
+            {
+                "supplier": self.supplier.pk,
+                "medicine": self.medicine.pk,
+                "request_key": "00000000-0000-0000-0000-000000000001",
+                "batch_number": "BATCH-001",
+                "expiry_date": "2028-12-31",
+                "purchase_price": "1.00",
+                "sale_price": "2.00",
+                "quantity_received": "10",
+            },
+        )
+        self.assertEqual(duplicate_receipt.status_code, 302)
+        self.assertEqual(
+            MedicineBatch.objects.filter(batch_number="BATCH-001").count(), 1
+        )
 
         response = self.client.post(
             reverse("dispense_prescription", args=[self.prescription.pk]),
@@ -518,6 +717,7 @@ class PharmacyWorkflowTests(TestCase):
                 "prescription_item": self.item.pk,
                 "batch": batch.pk,
                 "quantity": "2",
+                "request_key": "00000000-0000-0000-0000-000000000002",
             },
         )
 
@@ -531,6 +731,441 @@ class PharmacyWorkflowTests(TestCase):
             ).exists()
         )
 
+    def test_duplicate_dispense_is_idempotent_and_links_invoice(self):
+        batch = MedicineBatch.objects.create(
+            medicine=self.medicine,
+            receipt=StockReceipt.objects.create(
+                number="IDEMPOTENT-RECEIPT",
+                supplier=self.supplier,
+                received_at=timezone.now(),
+            ),
+            batch_number="IDEMPOTENT-BATCH",
+            expiry_date="2028-12-31",
+            purchase_price=Decimal("1.00"),
+            sale_price=Decimal("2.00"),
+            quantity_received=Decimal("10"),
+            quantity_on_hand=Decimal("10"),
+        )
+        self.client.force_login(self.pharmacy)
+        payload = {
+            "prescription_item": self.item.pk,
+            "batch": batch.pk,
+            "quantity": "2",
+            "request_key": "00000000-0000-0000-0000-000000000008",
+        }
+        url = reverse("dispense_prescription", args=[self.prescription.pk])
+
+        first = self.client.post(url, payload)
+        duplicate = self.client.post(url, payload)
+
+        self.assertEqual(first.status_code, 302)
+        self.assertEqual(duplicate.status_code, 302)
+        batch.refresh_from_db()
+        self.assertEqual(batch.quantity_on_hand, Decimal("8"))
+        dispensing = Dispensing.objects.get(prescription=self.prescription)
+        self.assertEqual(dispensing.invoice.total, Decimal("4.00"))
+        self.assertEqual(
+            StockMovement.objects.filter(
+                request_key="00000000-0000-0000-0000-000000000008"
+            ).count(),
+            1,
+        )
+
+    def test_otc_sale_return_and_admin_refund_share_invoice_ledger(self):
+        self.medicine.is_otc = True
+        self.medicine.save(update_fields=("is_otc", "updated_at"))
+        batch = MedicineBatch.objects.create(
+            medicine=self.medicine,
+            receipt=StockReceipt.objects.create(
+                number="OTC-RECEIPT",
+                supplier=self.supplier,
+                received_at=timezone.now(),
+            ),
+            batch_number="OTC-BATCH",
+            expiry_date="2028-12-31",
+            purchase_price=Decimal("1.00"),
+            sale_price=Decimal("2.00"),
+            quantity_received=Decimal("10"),
+            quantity_on_hand=Decimal("10"),
+        )
+        self.client.force_login(self.pharmacy)
+
+        sale_response = self.client.post(
+            reverse("pharmacy_sale_create"),
+            {
+                "batch": batch.pk,
+                "quantity": "2",
+                "request_key": "00000000-0000-0000-0000-000000000009",
+            },
+        )
+        self.assertEqual(sale_response.status_code, 302)
+        sale_detail = self.client.get(sale_response.url)
+        self.assertEqual(sale_detail.status_code, 200)
+        sale = PharmacySale.objects.get()
+        invoice = sale.invoice
+        self.assertIsNone(invoice.patient)
+        self.assertEqual(invoice.total, Decimal("4.00"))
+        batch.refresh_from_db()
+        self.assertEqual(batch.quantity_on_hand, Decimal("8"))
+
+        sale_line = sale.lines.get()
+        return_response = self.client.post(
+            reverse("pharmacy_return_create"),
+            {
+                "sale_line": sale_line.pk,
+                "quantity": "1",
+                "reason": "Synthetic unopened return",
+                "request_key": "00000000-0000-0000-0000-000000000010",
+            },
+        )
+        self.assertEqual(return_response.status_code, 302)
+        pharmacy_return = PharmacyReturn.objects.get()
+        self.assertEqual(pharmacy_return.status, PharmacyReturn.Status.PENDING)
+        self.assertEqual(pharmacy_return.lines.get().sale_line, sale_line)
+        batch.refresh_from_db()
+        self.assertEqual(batch.quantity_on_hand, Decimal("8"))
+
+        method = PaymentMethod.objects.create(code="OTC-CASH", name="OTC Cash")
+        payment = Payment.objects.create(
+            receipt_number="OTC-RECEIPT-PAY",
+            invoice=invoice,
+            method=method,
+            amount=Decimal("4.00"),
+            received_at=timezone.now(),
+        )
+        administrator = get_user_model().objects.create_user(
+            username="pharmacy-finance-administrator",
+            password="Synthetic-Password-123!",
+        )
+        administrator.groups.add(Group.objects.get(name="Administrator"))
+        StaffProfile.objects.create(
+            user=administrator,
+            employee_id="PHARM-ADMIN-001",
+        )
+        self.client.force_login(administrator)
+        refund_response = self.client.post(
+            reverse("invoice_refund", args=[invoice.pk]),
+            {
+                "payment": payment.pk,
+                "pharmacy_return": pharmacy_return.pk,
+                "amount": "2.00",
+                "reason": "Approved synthetic return",
+            },
+        )
+
+        self.assertEqual(refund_response.status_code, 302)
+        pharmacy_return.refresh_from_db()
+        self.assertEqual(pharmacy_return.status, PharmacyReturn.Status.APPROVED)
+        self.assertEqual(pharmacy_return.refund.amount, Decimal("2.00"))
+
+    def test_otc_sales_require_approval_and_duplicate_posts_are_idempotent(self):
+        batch = MedicineBatch.objects.create(
+            medicine=self.medicine,
+            receipt=StockReceipt.objects.create(
+                number="OTC-GUARD-RECEIPT",
+                supplier=self.supplier,
+                received_at=timezone.now(),
+            ),
+            batch_number="OTC-GUARD-BATCH",
+            expiry_date="2028-12-31",
+            purchase_price=Decimal("1.00"),
+            sale_price=Decimal("2.00"),
+            quantity_received=Decimal("5"),
+            quantity_on_hand=Decimal("5"),
+        )
+        self.client.force_login(self.pharmacy)
+        payload = {
+            "batch": batch.pk,
+            "quantity": "1",
+            "request_key": "00000000-0000-0000-0000-000000000011",
+        }
+
+        rejected = self.client.post(reverse("pharmacy_sale_create"), payload)
+        self.assertEqual(rejected.status_code, 400)
+        self.medicine.is_otc = True
+        self.medicine.save(update_fields=("is_otc", "updated_at"))
+        first = self.client.post(reverse("pharmacy_sale_create"), payload)
+        duplicate = self.client.post(reverse("pharmacy_sale_create"), payload)
+
+        self.assertEqual(first.status_code, 302)
+        self.assertEqual(duplicate.status_code, 302)
+        batch.refresh_from_db()
+        self.assertEqual(batch.quantity_on_hand, Decimal("4"))
+        self.assertEqual(PharmacySale.objects.count(), 1)
+        self.assertEqual(Invoice.objects.count(), 1)
+
+    def test_admin_rejection_releases_return_quantity(self):
+        batch = MedicineBatch.objects.create(
+            medicine=self.medicine,
+            receipt=StockReceipt.objects.create(
+                number="RETURN-REJECT-RECEIPT",
+                supplier=self.supplier,
+                received_at=timezone.now(),
+            ),
+            batch_number="RETURN-REJECT-BATCH",
+            expiry_date="2028-12-31",
+            purchase_price=Decimal("1.00"),
+            sale_price=Decimal("2.00"),
+            quantity_received=Decimal("5"),
+            quantity_on_hand=Decimal("3"),
+        )
+        sale = PharmacySale.objects.create(
+            number="RETURN-REJECT-SALE",
+            status=PharmacySale.Status.ISSUED,
+            sold_at=timezone.now(),
+            sold_by=self.pharmacy_profile,
+        )
+        sale_line = PharmacySaleLine.objects.create(
+            sale=sale,
+            batch=batch,
+            quantity=Decimal("2"),
+            unit_price=Decimal("2.00"),
+            line_total=Decimal("4.00"),
+        )
+        pharmacy_return = PharmacyReturn.objects.create(
+            number="RETURN-REJECT-001",
+            reason="Pending reason",
+            status=PharmacyReturn.Status.PENDING,
+            created_by=self.pharmacy_profile,
+        )
+        ReturnLine.objects.create(
+            pharmacy_return=pharmacy_return,
+            sale_line=sale_line,
+            quantity=Decimal("1"),
+            refund_amount=Decimal("2.00"),
+        )
+        administrator = get_user_model().objects.create_user(
+            username="return-review-administrator",
+            password="Synthetic-Password-123!",
+        )
+        administrator.groups.add(Group.objects.get(name="Administrator"))
+        StaffProfile.objects.create(user=administrator, employee_id="RETURN-ADMIN-001")
+        self.client.force_login(administrator)
+
+        response = self.client.post(
+            reverse("pharmacy_return_reject", args=[pharmacy_return.pk]),
+            {"reason": "Packaging was opened"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        pharmacy_return.refresh_from_db()
+        self.assertEqual(pharmacy_return.status, PharmacyReturn.Status.REJECTED)
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="pharmacy.return_rejected",
+                target_id=str(pharmacy_return.pk),
+                details__reason="Packaging was opened",
+            ).exists()
+        )
+        self.client.force_login(self.pharmacy)
+        replacement = self.client.post(
+            reverse("pharmacy_return_create"),
+            {
+                "sale_line": sale_line.pk,
+                "quantity": "1",
+                "reason": "Retry after rejection",
+                "request_key": "00000000-0000-0000-0000-000000000012",
+            },
+        )
+        self.assertEqual(replacement.status_code, 302)
+        self.assertEqual(
+            PharmacyReturn.objects.filter(status=PharmacyReturn.Status.PENDING).count(),
+            1,
+        )
+
+    def test_expired_batch_cannot_be_dispensed(self):
+        batch = MedicineBatch.objects.create(
+            medicine=self.medicine,
+            receipt=StockReceipt.objects.create(
+                number="EXPIRED-RECEIPT",
+                supplier=self.supplier,
+                received_at=timezone.now(),
+            ),
+            batch_number="EXPIRED-BATCH",
+            expiry_date="2020-01-01",
+            purchase_price=Decimal("1.00"),
+            sale_price=Decimal("2.00"),
+            quantity_received=Decimal("5"),
+            quantity_on_hand=Decimal("5"),
+        )
+        self.client.force_login(self.pharmacy)
+
+        response = self.client.post(
+            reverse("dispense_prescription", args=[self.prescription.pk]),
+            {
+                "prescription_item": self.item.pk,
+                "batch": batch.pk,
+                "quantity": "1",
+                "request_key": "00000000-0000-0000-0000-000000000003",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        batch.refresh_from_db()
+        self.assertEqual(batch.quantity_on_hand, Decimal("5"))
+        self.assertFalse(
+            Dispensing.objects.filter(prescription=self.prescription).exists()
+        )
+
+    def test_partial_dispensing_cannot_exceed_prescribed_total(self):
+        receipt = StockReceipt.objects.create(
+            number="PARTIAL-RECEIPT",
+            supplier=self.supplier,
+            received_at=timezone.now(),
+        )
+        batch = MedicineBatch.objects.create(
+            medicine=self.medicine,
+            receipt=receipt,
+            batch_number="PARTIAL-BATCH",
+            expiry_date="2028-12-31",
+            purchase_price=Decimal("1.00"),
+            sale_price=Decimal("2.00"),
+            quantity_received=Decimal("20"),
+            quantity_on_hand=Decimal("20"),
+        )
+        self.client.force_login(self.pharmacy)
+        url = reverse("dispense_prescription", args=[self.prescription.pk])
+        data = {"prescription_item": self.item.pk, "batch": batch.pk}
+
+        first = self.client.post(
+            url,
+            {
+                **data,
+                "quantity": "6",
+                "request_key": "00000000-0000-0000-0000-000000000004",
+            },
+        )
+        second = self.client.post(
+            url,
+            {
+                **data,
+                "quantity": "5",
+                "request_key": "00000000-0000-0000-0000-000000000005",
+            },
+        )
+
+        self.assertEqual(first.status_code, 302)
+        self.assertEqual(second.status_code, 400)
+        batch.refresh_from_db()
+        self.assertEqual(batch.quantity_on_hand, Decimal("14"))
+        self.assertEqual(
+            DispensingLine.objects.filter(prescription_item=self.item).aggregate(
+                total=Sum("quantity")
+            )["total"],
+            Decimal("6"),
+        )
+
+    def test_stock_adjustment_requires_reason_and_records_movement(self):
+        receipt = StockReceipt.objects.create(
+            number="ADJUST-RECEIPT",
+            supplier=self.supplier,
+            received_at=timezone.now(),
+        )
+        batch = MedicineBatch.objects.create(
+            medicine=self.medicine,
+            receipt=receipt,
+            batch_number="ADJUST-BATCH",
+            expiry_date="2028-12-31",
+            purchase_price=Decimal("1.00"),
+            sale_price=Decimal("2.00"),
+            quantity_received=Decimal("10"),
+            quantity_on_hand=Decimal("10"),
+        )
+        self.client.force_login(self.pharmacy)
+
+        response = self.client.post(
+            reverse("stock_adjustment", args=[batch.pk]),
+            {
+                "quantity_delta": "2",
+                "reason": "Synthetic count correction",
+                "request_key": "00000000-0000-0000-0000-000000000006",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        batch.refresh_from_db()
+        self.assertEqual(batch.quantity_on_hand, Decimal("12"))
+        movement = StockMovement.objects.get(
+            batch=batch, kind=StockMovement.Kind.ADJUSTMENT
+        )
+        self.assertEqual(movement.quantity_after, Decimal("12"))
+        audit = AuditEvent.objects.get(action="stock.adjusted", target_id=str(batch.pk))
+        self.assertEqual(movement.reference_id, str(audit.pk))
+        self.assertEqual(audit.details["reason"], "Synthetic count correction")
+
+    def test_quarantined_batch_cannot_be_dispensed(self):
+        receipt = StockReceipt.objects.create(
+            number="QUARANTINE-RECEIPT",
+            supplier=self.supplier,
+            received_at=timezone.now(),
+        )
+        batch = MedicineBatch.objects.create(
+            medicine=self.medicine,
+            receipt=receipt,
+            batch_number="QUARANTINE-BATCH",
+            expiry_date="2028-12-31",
+            purchase_price=Decimal("1.00"),
+            sale_price=Decimal("2.00"),
+            quantity_received=Decimal("5"),
+            quantity_on_hand=Decimal("5"),
+            is_quarantined=True,
+        )
+        self.client.force_login(self.pharmacy)
+
+        response = self.client.post(
+            reverse("dispense_prescription", args=[self.prescription.pk]),
+            {
+                "prescription_item": self.item.pk,
+                "batch": batch.pk,
+                "quantity": "1",
+                "request_key": "00000000-0000-0000-0000-000000000007",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(
+            Dispensing.objects.filter(prescription=self.prescription).exists()
+        )
+
+    def test_fefo_suggestions_exclude_expired_and_quarantined_batches(self):
+        receipt = StockReceipt.objects.create(
+            number="FEFO-RECEIPT",
+            supplier=self.supplier,
+            received_at=timezone.now(),
+        )
+        for batch_number, expiry_date, quarantined in (
+            ("FEFO-LATE", "2028-12-31", False),
+            ("FEFO-EARLY", "2027-01-01", False),
+            ("FEFO-EXPIRED", "2020-01-01", False),
+            ("FEFO-QUARANTINED", "2027-02-01", True),
+        ):
+            MedicineBatch.objects.create(
+                medicine=self.medicine,
+                receipt=receipt,
+                batch_number=batch_number,
+                expiry_date=expiry_date,
+                purchase_price=Decimal("1.00"),
+                sale_price=Decimal("2.00"),
+                quantity_received=Decimal("5"),
+                quantity_on_hand=Decimal("5"),
+                is_quarantined=quarantined,
+            )
+        self.client.force_login(self.pharmacy)
+
+        response = self.client.get(reverse("pharmacy_prescription_list"))
+
+        self.assertEqual(response.status_code, 200)
+        prescription = next(
+            row
+            for row in response.context["prescriptions"]
+            if row.pk == self.prescription.pk
+        )
+        suggested = list(prescription.items.all()[0].available_batches)
+        self.assertEqual(
+            [batch.batch_number for batch in suggested], ["FEFO-EARLY", "FEFO-LATE"]
+        )
+        self.assertContains(response, "(FEFO)")
+
 
 class RolePermissionTests(TestCase):
     def setUp(self):
@@ -543,7 +1178,12 @@ class RolePermissionTests(TestCase):
                 {"view_consultation", "add_refund", "add_medicine"},
             ),
             "Pharmacy": (
-                {"view_prescription", "add_stockreceipt", "add_dispensing"},
+                {
+                    "view_prescription",
+                    "add_stockreceipt",
+                    "add_dispensing",
+                    "adjust_stock",
+                },
                 {"add_appointment", "add_consultation", "change_patient"},
             ),
             "Doctor": (
@@ -551,8 +1191,17 @@ class RolePermissionTests(TestCase):
                 {"add_payment", "add_medicine", "approve_refund"},
             ),
             "Administrator": (
-                {"add_user", "add_service", "change_hospitalsettings"},
-                {"view_patient", "view_consultation", "add_payment", "void_invoice"},
+                {
+                    "add_user",
+                    "add_service",
+                    "change_hospitalsettings",
+                    "add_invoice",
+                    "add_adjustment",
+                    "add_refund",
+                    "approve_refund",
+                    "void_invoice",
+                },
+                {"view_patient", "view_consultation", "add_payment"},
             ),
         }
 

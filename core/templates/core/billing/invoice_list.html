@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Invoices | Hospital Management System</title>
+  </head>
+  <body>
+    <main>
+      <h1>Invoices</h1>
+      <form method="get" role="search">
+        <label for="invoice-query">Search invoice, patient ID, or name</label>
+        <input id="invoice-query" type="search" name="q" value="{{ query }}">
+        <button type="submit">Search</button>
+      </form>
+      <table>
+        <thead><tr><th>Invoice</th><th>Patient</th><th>Status</th><th>Total</th><th>Balance</th></tr></thead>
+        <tbody>
+          {% for invoice in invoices %}
+            <tr>
+              <td><a href="{% url 'invoice_detail' invoice.pk %}">{{ invoice.number }}</a></td>
+              <td>{% if invoice.patient %}{{ invoice.patient.mrn }} — {{ invoice.patient.full_name }}{% else %}Walk-in{% endif %}</td>
+              <td>{{ invoice.get_status_display }}</td>
+              <td>{{ invoice.total }}</td>
+              <td>{{ invoice.balance }}</td>
+            </tr>
+          {% empty %}<tr><td colspan="5">No invoices found.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+      <p><a href="{% url 'home' %}">Back to home</a></p>
+    </main>
+  </body>
+</html>

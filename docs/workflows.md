@@ -1,8 +1,8 @@
 # MVP Workflows
 
-Status: implementation-oriented baseline for one hospital. Policy choices
-tagged as open are recorded in [decisions.md](decisions.md) and must be approved
-before feature code depends on them. Examples and tests use synthetic data only.
+Status: implementation-oriented baseline for one hospital. Remaining owner
+decisions are recorded in [decisions.md](decisions.md). Examples and tests use
+synthetic data only.
 
 ## Reception
 
@@ -56,16 +56,18 @@ but cannot open consultation pages or see notes/diagnosis.
    minimum patient identifiers needed to avoid a mismatch.
 2. Review only prescription details and allergy/safety information necessary for
    safe dispensing; do not expose general clinical notes.
-3. Select available, unexpired batch stock under the approved FEFO and exception
-   policy. Record dispensed quantities and stock movement atomically.
-4. Record a partial dispense, counter sale, correction, or return only where the
-   corresponding policy is approved. Prevent negative stock and preserve the
-   movement history.
-5. Record pharmacy payment and issue its receipt according to the approved
-   relationship between pharmacy sales and the main billing ledger.
-
-The sales ledger, receipt numbering, partial/refill rules, stock adjustment
-reasons, quarantine/expiry handling, and return eligibility are owner decisions.
+3. Select unexpired, non-quarantined stock; FEFO is the default suggestion.
+   Dispensing quantity is cumulative against the prescription and cannot exceed
+   its remaining quantity. Stock is locked and updated atomically.
+4. Counter sales are permitted only for medicines explicitly marked OTC. Both
+   counter sales and prescription dispensings create an invoice in the shared
+   financial ledger; Pharmacy does not record payments.
+5. Stock adjustments require a reason and create both a movement and audit
+   event. Quarantined/expired stock is excluded from sale and dispensing.
+6. Return requests reference the original sale or dispensing line and reserve
+   no more than its unreturned quantity. Requests remain pending until handled
+   by an Administrator. Returned medicine is not automatically returned to
+   sellable stock; any restock requires an explicit, separately audited action.
 
 ## Administrator
 
@@ -76,8 +78,9 @@ reasons, quarantine/expiry handling, and return eligibility are owner decisions.
 3. Maintain approved departments, visit types, services, charges, payment
    methods, suppliers, medicine reference data, tax/discount settings, and
    numbering configuration.
-4. Review reports and approve sensitive financial or inventory actions only
-   within an approved authorization limit.
+4. Review reports and perform discounts, refunds, invoice voids, and financial
+   adjustments with a reason and audit record. The single-hospital MVP does not
+   require a second approver.
 
 The administrator role does not automatically grant clinical-record access.
 Exact settings, approval limits, report definitions, and export permissions

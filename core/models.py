@@ -107,6 +107,7 @@ class Medicine(TimestampedModel):
     dosage_form = models.CharField(max_length=80, blank=True)
     unit = models.CharField(max_length=40)
     barcode = models.CharField(max_length=80, unique=True, null=True, blank=True)
+    is_otc = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
 
 
@@ -285,8 +286,10 @@ class MedicineBatch(TimestampedModel):
     sale_price = models.DecimalField(max_digits=12, decimal_places=2)
     quantity_received = models.DecimalField(max_digits=12, decimal_places=3)
     quantity_on_hand = models.DecimalField(max_digits=12, decimal_places=3)
+    is_quarantined = models.BooleanField(default=False)
 
     class Meta:
+        permissions = [("adjust_stock", "Can adjust medicine stock")]
         constraints = [
             models.UniqueConstraint(
                 fields=["medicine", "batch_number"], name="medicine_batch_unique"
@@ -301,8 +304,7 @@ class MedicineBatch(TimestampedModel):
                 condition=Q(quantity_received__gt=0), name="batch_received_positive"
             ),
             models.CheckConstraint(
-                condition=Q(quantity_on_hand__gte=0)
-                & Q(quantity_on_hand__lte=F("quantity_received")),
+                condition=Q(quantity_on_hand__gte=0),
                 name="batch_on_hand_valid",
             ),
         ]
@@ -330,6 +332,7 @@ class StockMovement(models.Model):
     quantity_after = models.DecimalField(max_digits=12, decimal_places=3)
     reference_type = models.CharField(max_length=40, blank=True)
     reference_id = models.CharField(max_length=40, blank=True)
+    request_key = models.UUIDField(null=True, blank=True, unique=True)
     actor = models.ForeignKey(
         StaffProfile,
         on_delete=models.SET_NULL,
@@ -373,6 +376,13 @@ class PharmacySale(TimestampedModel):
         null=True,
         blank=True,
         related_name="pharmacy_sales",
+    )
+    invoice = models.OneToOneField(
+        "Invoice",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="pharmacy_sale",
     )
     status = models.CharField(
         max_length=12, choices=Status.choices, default=Status.DRAFT
@@ -425,6 +435,13 @@ class Dispensing(TimestampedModel):
     number = models.CharField(max_length=40, unique=True)
     prescription = models.ForeignKey(
         Prescription, on_delete=models.PROTECT, related_name="dispensings"
+    )
+    invoice = models.OneToOneField(
+        "Invoice",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="dispensing",
     )
     patient = models.ForeignKey(
         Patient, on_delete=models.PROTECT, related_name="dispensings"
@@ -493,6 +510,7 @@ class PharmacyReturn(TimestampedModel):
         blank=True,
         related_name="pharmacy_returns_created",
     )
+    request_key = models.UUIDField(unique=True, null=True, blank=True)
 
     class Meta:
         constraints = [
@@ -546,7 +564,11 @@ class Invoice(TimestampedModel):
 
     number = models.CharField(max_length=40, unique=True)
     patient = models.ForeignKey(
-        Patient, on_delete=models.PROTECT, related_name="invoices"
+        Patient,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="invoices",
     )
     status = models.CharField(
         max_length=12, choices=Status.choices, default=Status.DRAFT
@@ -644,6 +666,13 @@ class Refund(TimestampedModel):
 
     payment = models.ForeignKey(
         Payment, on_delete=models.PROTECT, related_name="refunds"
+    )
+    pharmacy_return = models.OneToOneField(
+        PharmacyReturn,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="refund",
     )
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     reason = models.TextField()

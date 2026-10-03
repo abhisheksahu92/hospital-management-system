@@ -21,12 +21,91 @@
               <td>{{ prescription.number }}</td>
               <td>{{ prescription.patient.mrn }} — {{ prescription.patient.full_name }}</td>
               <td>{{ prescription.patient.allergy_safety_notes|default:"No safety information recorded" }}</td>
-              <td><ul>{% for item in prescription.items.all %}<li>{{ item.medicine.generic_name }} {{ item.medicine.strength }} — {{ item.dosage }} — {{ item.frequency }} — {{ item.quantity }}</li>{% endfor %}</ul></td>
+              <td>
+                <ul>
+                  {% for item in prescription.items.all %}
+                    <li>
+                      {{ item.medicine.generic_name }} {{ item.medicine.strength }} — {{ item.dosage }} — {{ item.frequency }} — {{ item.remaining_quantity }} remaining
+                      {% if item.remaining_quantity > 0 %}
+                        <form method="post" action="{% url 'dispense_prescription' prescription.pk %}">
+                          {% csrf_token %}
+                          <input type="hidden" name="prescription_item" value="{{ item.pk }}">
+                          <input type="hidden" name="request_key" value="{{ item.request_key }}">
+                          <label>Batch <select name="batch" required>
+                            {% for batch in item.available_batches %}
+                              <option value="{{ batch.pk }}"{% if forloop.first %} selected{% endif %}>{{ batch.batch_number }} — expires {{ batch.expiry_date }} — {{ batch.quantity_on_hand }} available{% if forloop.first %} (FEFO){% endif %}</option>
+                            {% endfor %}
+                          </select></label>
+                          <label>Quantity <input type="number" name="quantity" min="0.001" max="{{ item.remaining_quantity }}" step="0.001" required></label>
+                          <button type="submit"{% if not item.available_batches %} disabled{% endif %}>Dispense</button>
+                        </form>
+                      {% else %}
+                        Fully dispensed
+                      {% endif %}
+                      {% for dispensing_line in item.dispensing_lines %}
+                        {% if dispensing_line.returnable_quantity > 0 %}
+                          <form method="post" action="{% url 'pharmacy_return_create' %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="dispensing_line" value="{{ dispensing_line.pk }}">
+                            <input type="hidden" name="request_key" value="{{ dispensing_line.return_request_key }}">
+                            <label>Return quantity from dispensing {{ dispensing_line.dispensing.number }} <input type="number" name="quantity" min="0.001" max="{{ dispensing_line.returnable_quantity }}" step="0.001" required></label>
+                            <label>Reason <input name="reason" required></label>
+                            <button type="submit">Request return</button>
+                          </form>
+                        {% endif %}
+                      {% endfor %}
+                    </li>
+                  {% endfor %}
+                </ul>
+              </td>
               <td><a href="{% url 'prescription_print' prescription.pk %}">Print</a></td>
             </tr>
           {% empty %}
             <tr><td colspan="5">No issued prescriptions found.</td></tr>
           {% endfor %}
+        </tbody>
+      </table>
+      <h2>OTC counter sale</h2>
+      <form method="post" action="{% url 'pharmacy_sale_create' %}">
+        {% csrf_token %}
+        <input type="hidden" name="request_key" value="{{ sale_request_key }}">
+        <label>Medicine batch <select name="batch" required>
+          {% for batch in otc_batches %}<option value="{{ batch.pk }}">{{ batch.medicine.generic_name }} {{ batch.medicine.strength }} — {{ batch.batch_number }} — expires {{ batch.expiry_date }} — {{ batch.quantity_on_hand }} available</option>{% endfor %}
+        </select></label>
+        <label>Quantity <input type="number" name="quantity" min="0.001" step="0.001" required></label>
+        <button type="submit"{% if not otc_batches %} disabled{% endif %}>Create OTC sale</button>
+      </form>
+      <h2>Batch controls</h2>
+      <table>
+        <thead><tr><th>Medicine</th><th>Batch</th><th>Expiry</th><th>On hand</th><th>Status</th><th>Adjustment</th><th>Quarantine</th></tr></thead>
+        <tbody>
+          {% for batch in stock_batches %}
+            <tr>
+              <td>{{ batch.medicine.generic_name }}</td>
+              <td>{{ batch.batch_number }}</td>
+              <td>{{ batch.expiry_date }}</td>
+              <td>{{ batch.quantity_on_hand }}</td>
+              <td>{% if batch.is_quarantined %}Quarantined{% else %}Available{% endif %}</td>
+              <td>
+                <form method="post" action="{% url 'stock_adjustment' batch.pk %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="request_key" value="{{ batch.adjust_request_key }}">
+                  <label>Quantity change <input type="number" name="quantity_delta" step="0.001" required></label>
+                  <label>Reason <input name="reason" required></label>
+                  <button type="submit">Adjust</button>
+                </form>
+              </td>
+              <td>
+                <form method="post" action="{% url 'batch_quarantine' batch.pk %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="request_key" value="{{ batch.quarantine_request_key }}">
+                  <input type="hidden" name="is_quarantined" value="{{ batch.is_quarantined|yesno:'false,true' }}">
+                  <label>Reason <input name="reason" required></label>
+                  <button type="submit">{% if batch.is_quarantined %}Release{% else %}Quarantine{% endif %}</button>
+                </form>
+              </td>
+            </tr>
+          {% empty %}<tr><td colspan="7">No batches recorded.</td></tr>{% endfor %}
         </tbody>
       </table>
     </main>

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sale {{ sale.number }} | Hospital Management System</title>
+  </head>
+  <body>
+    <main>
+      <h1>Pharmacy sale {{ sale.number }}</h1>
+      <p>Status: {{ sale.get_status_display }}</p>
+      <p>Ledger invoice: {{ sale.invoice.number }} · {{ sale.invoice.total }}</p>
+      <table>
+        <thead><tr><th>Medicine</th><th>Batch</th><th>Quantity</th><th>Price</th><th>Line total</th><th>Return</th></tr></thead>
+        <tbody>
+          {% for line in lines %}
+            <tr>
+              <td>{{ line.batch.medicine.generic_name }} {{ line.batch.medicine.strength }}</td>
+              <td>{{ line.batch.batch_number }} (expires {{ line.batch.expiry_date }})</td>
+              <td>{{ line.quantity }}</td>
+              <td>{{ line.unit_price }}</td>
+              <td>{{ line.line_total }}</td>
+              <td>
+                {% if line.returnable_quantity > 0 %}
+                  <form method="post" action="{% url 'pharmacy_return_create' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="sale_line" value="{{ line.pk }}">
+                    <input type="hidden" name="request_key" value="{{ line.request_key }}">
+                    <label>Quantity <input type="number" name="quantity" min="0.001" max="{{ line.returnable_quantity }}" step="0.001" required></label>
+                    <label>Reason <input name="reason" required></label>
+                    <button type="submit">Request return</button>
+                  </form>
+                {% else %}No returnable quantity{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p><a href="{% url 'pharmacy_prescription_list' %}">Back to pharmacy</a></p>
+    </main>
+  </body>
+</html>
