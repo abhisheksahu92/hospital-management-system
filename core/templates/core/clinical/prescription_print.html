@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Prescription {{ prescription.number }} | Hospital Management System</title>
+    <style>
+      @media print { button { display: none; } body { font: 12pt serif; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Prescription</h1>
+      <p>Prescription ID: {{ prescription.number }}</p>
+      <p>Patient: {{ prescription.patient.mrn }} — {{ prescription.patient.full_name }}</p>
+      <p>Issued: {{ prescription.issued_at|date:'Y-m-d H:i' }}</p>
+      <p>Doctor: {{ prescription.doctor.user.get_full_name|default:prescription.doctor.user.username }}</p>
+      <p>Allergy/safety information: {{ prescription.patient.allergy_safety_notes|default:"No safety information recorded" }}</p>
+      <h2>Medicines</h2>
+      <table>
+        <thead><tr><th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Quantity</th><th>Instructions</th></tr></thead>
+        <tbody>
+          {% for item in items %}
+            <tr><td>{{ item.medicine.generic_name }} {{ item.medicine.strength }}</td><td>{{ item.dosage }}</td><td>{{ item.frequency }}</td><td>{{ item.duration }}</td><td>{{ item.quantity }}</td><td>{{ item.instructions }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <button type="button" onclick="window.print()">Print</button>
+    </main>
+  </body>
+</html>

@@ -43,6 +43,13 @@ are denied unless a specific minimal workflow field is approved.
 The exact consultation fields, diagnosis format, prescription structure, and
 clinical-history access rules require product/clinical approval.
 
+The current implementation creates the encounter only for the assigned doctor
+while the appointment is in progress. Prescription items are optional; if
+provided, the prescription is issued atomically with the encounter. Doctors see
+their own authored consultation history. Pharmacy can search/print issued
+prescriptions with patient ID/name, the safety-notes field, and item instructions,
+but cannot open consultation pages or see notes/diagnosis.
+
 ## Pharmacy
 
 1. Find the dispensing request by approved prescription lookup and confirm the

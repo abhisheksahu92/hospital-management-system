@@ -44,6 +44,9 @@
                     {% if appointment.status == 'in_progress' %}<button name="action" value="complete">Complete</button>{% endif %}
                   </form>
                 {% endif %}
+                {% if is_doctor and appointment.status == 'in_progress' %}
+                  <a href="{% url 'consultation_create' appointment.pk %}">Open encounter</a>
+                {% endif %}
               </td>
             </tr>
           {% empty %}

@@ -36,9 +36,10 @@ account created through `createsuperuser`.
 
 ## Current Boundary
 
-The patient, appointment, clinical, billing, and pharmacy workflow views have
-not all been implemented yet. These groups define the server-side permission
-contract for those tickets; KAN-9 through KAN-14 must apply the checks to every
-read/write endpoint and test field-level minimum visibility. Django Admin logs
-staff/group changes; sensitive clinical access and operational/financial audit
-events are completed under KAN-16.
+Patient, appointment, and clinical routes apply these checks and object scopes.
+Billing, pharmacy stock/sales/dispensing, and returns are still future work under
+KAN-12 through KAN-14. Each new endpoint must keep server-side checks and test
+minimum field visibility; the pharmacy prescription pages currently expose only
+patient identity, safety notes, and issued prescription items. Django Admin logs
+staff/group changes, while sensitive clinical read/create/print actions produce
+AuditEvents; full audit review remains under KAN-16.

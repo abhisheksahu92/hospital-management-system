@@ -48,6 +48,14 @@ is still required.
 - Approve which investigations and follow-up fields are in the MVP.
 - Approve the minimum prescription and safety data pharmacy may view.
 
+KAN-11 currently represents diagnosis as text, supports medicine/dosage/frequency/
+duration/instructions/quantity on an issued prescription, and does not model
+investigation requests or follow-up plans. Doctors see only their own authored
+consultation notes; the pharmacy views issued prescription items and the current
+patient safety-notes field, never consultation notes or diagnosis. Clinical
+owners must approve these fields and any cross-doctor history access before they
+are broadened.
+
 ## Billing and payment policy
 
 - Approve service catalogue/charges, invoice and receipt formats, numbering, and

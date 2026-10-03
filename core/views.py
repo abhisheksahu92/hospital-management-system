@@ -9,14 +9,35 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 
 from .authorization import doctor_patient_queryset
-from .forms import AppointmentForm, PatientForm
-from .models import Appointment, AuditEvent, HospitalSettings, Patient, StaffProfile
+from .forms import (
+    AppointmentForm,
+    ConsultationForm,
+    PatientForm,
+    PrescriptionItemFormSet,
+)
+from .models import (
+    Appointment,
+    AuditEvent,
+    Consultation,
+    HospitalSettings,
+    Patient,
+    Prescription,
+    StaffProfile,
+)
 from .services.numbering import next_number
 
 
 def home(request):
     hospital = HospitalSettings.objects.filter(pk=1).only("name").first()
-    return render(request, "core/home.html", {"hospital": hospital})
+    return render(
+        request,
+        "core/home.html",
+        {
+            "hospital": hospital,
+            "is_pharmacy": request.user.is_authenticated
+            and _has_role(request.user, "Pharmacy"),
+        },
+    )
 
 
 def health(request):
@@ -109,7 +130,11 @@ def patient_detail(request, pk):
     return render(
         request,
         "core/patients/detail.html",
-        {"patient": patient, "can_edit": _has_role(request.user, "Reception")},
+        {
+            "patient": patient,
+            "can_edit": _has_role(request.user, "Reception"),
+            "can_view_clinical": _has_role(request.user, "Doctor"),
+        },
     )
 
 
@@ -315,3 +340,177 @@ def appointment_transition(request, pk):
             {"from": previous_status, "to": next_status},
         )
     return redirect("appointment_list")
+
+
+def _doctor_profile(user):
+    if not _has_role(user, "Doctor"):
+        raise PermissionDenied
+    profile = StaffProfile.objects.filter(user=user).first()
+    if profile is None:
+        raise PermissionDenied
+    return profile
+
+
+def _audit_clinical_access(request, action, target_type, target_id):
+    actor = StaffProfile.objects.filter(user=request.user).first()
+    AuditEvent.objects.create(
+        actor=actor,
+        action=action,
+        target_type=target_type,
+        target_id=str(target_id),
+        details={},
+    )
+
+
+@permission_required("core.view_consultation", raise_exception=True)
+def clinical_history(request, patient_id):
+    profile = _doctor_profile(request.user)
+    patient = get_object_or_404(
+        doctor_patient_queryset(request.user).filter(archived_at__isnull=True),
+        pk=patient_id,
+    )
+    consultations = Consultation.objects.filter(
+        patient=patient, doctor=profile
+    ).order_by("-created_at")
+    _audit_clinical_access(request, "clinical.history_viewed", "patient", patient.pk)
+    return render(
+        request,
+        "core/clinical/history.html",
+        {"patient": patient, "consultations": consultations},
+    )
+
+
+@permission_required("core.add_consultation", raise_exception=True)
+def consultation_create(request, appointment_id):
+    profile = _doctor_profile(request.user)
+    appointment = get_object_or_404(
+        Appointment.objects.filter(
+            doctor=profile, status=Appointment.Status.IN_PROGRESS
+        ).select_related("patient"),
+        pk=appointment_id,
+    )
+    existing = Consultation.objects.filter(appointment=appointment).first()
+    if existing:
+        return redirect("consultation_detail", pk=existing.pk)
+
+    form = ConsultationForm(request.POST or None)
+    item_formset = PrescriptionItemFormSet(request.POST or None, prefix="items")
+    if request.method == "POST" and form.is_valid() and item_formset.is_valid():
+        try:
+            with transaction.atomic():
+                consultation = form.save(commit=False)
+                consultation.appointment = appointment
+                consultation.patient = appointment.patient
+                consultation.doctor = profile
+                consultation.save()
+                _audit_clinical_access(
+                    request,
+                    "clinical.consultation_created",
+                    "consultation",
+                    consultation.pk,
+                )
+
+                if any(item_form.has_changed() for item_form in item_formset.forms):
+                    prescription = Prescription.objects.create(
+                        number=next_number("PRESCRIPTION"),
+                        consultation=consultation,
+                        patient=appointment.patient,
+                        doctor=profile,
+                        status=Prescription.Status.ISSUED,
+                        issued_at=timezone.now(),
+                    )
+                    item_formset.instance = prescription
+                    item_formset.save()
+                    _audit_clinical_access(
+                        request,
+                        "clinical.prescription_issued",
+                        "prescription",
+                        prescription.pk,
+                    )
+        except IntegrityError:
+            existing = Consultation.objects.filter(appointment=appointment).first()
+            if existing is None:
+                raise
+            return redirect("consultation_detail", pk=existing.pk)
+        return redirect("consultation_detail", pk=consultation.pk)
+
+    return render(
+        request,
+        "core/clinical/consultation_form.html",
+        {
+            "appointment": appointment,
+            "form": form,
+            "item_formset": item_formset,
+        },
+    )
+
+
+@permission_required("core.view_consultation", raise_exception=True)
+def consultation_detail(request, pk):
+    profile = _doctor_profile(request.user)
+    consultation = get_object_or_404(
+        Consultation.objects.select_related("patient", "doctor__user", "appointment"),
+        pk=pk,
+        doctor=profile,
+    )
+    prescriptions = consultation.prescriptions.prefetch_related(
+        "items__medicine"
+    ).order_by("created_at")
+    _audit_clinical_access(
+        request, "clinical.consultation_viewed", "consultation", consultation.pk
+    )
+    return render(
+        request,
+        "core/clinical/consultation_detail.html",
+        {"consultation": consultation, "prescriptions": prescriptions},
+    )
+
+
+@permission_required("core.view_prescription", raise_exception=True)
+def prescription_print(request, pk):
+    if _has_role(request.user, "Doctor"):
+        profile = _doctor_profile(request.user)
+        prescriptions = Prescription.objects.filter(doctor=profile)
+    elif _has_role(request.user, "Pharmacy"):
+        prescriptions = Prescription.objects.filter(status=Prescription.Status.ISSUED)
+    else:
+        raise PermissionDenied
+    prescription = get_object_or_404(
+        prescriptions.select_related("patient", "doctor__user", "consultation"),
+        pk=pk,
+    )
+    _audit_clinical_access(
+        request, "clinical.prescription_printed", "prescription", prescription.pk
+    )
+    return render(
+        request,
+        "core/clinical/prescription_print.html",
+        {
+            "prescription": prescription,
+            "items": prescription.items.select_related("medicine"),
+        },
+    )
+
+
+@permission_required("core.view_prescription", raise_exception=True)
+def pharmacy_prescription_list(request):
+    if not _has_role(request.user, "Pharmacy"):
+        raise PermissionDenied
+    query = request.GET.get("q", "").strip()
+    prescriptions = Prescription.objects.filter(status=Prescription.Status.ISSUED)
+    if query:
+        prescriptions = prescriptions.filter(
+            Q(number__icontains=query)
+            | Q(patient__mrn__icontains=query)
+            | Q(patient__full_name__icontains=query)
+        )
+    return render(
+        request,
+        "core/clinical/pharmacy_prescriptions.html",
+        {
+            "prescriptions": prescriptions.select_related("patient").prefetch_related(
+                "items__medicine"
+            ),
+            "query": query,
+        },
+    )

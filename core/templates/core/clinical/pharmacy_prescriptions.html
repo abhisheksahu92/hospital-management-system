@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dispensing prescriptions | Hospital Management System</title>
+  </head>
+  <body>
+    <main>
+      <h1>Dispensing prescriptions</h1>
+      <form method="get" role="search">
+        <label for="prescription-query">Search prescription ID, patient ID, or name</label>
+        <input id="prescription-query" type="search" name="q" value="{{ query }}">
+        <button type="submit">Search</button>
+      </form>
+      <table>
+        <thead><tr><th>Prescription</th><th>Patient</th><th>Safety information</th><th>Medicines</th><th>Print</th></tr></thead>
+        <tbody>
+          {% for prescription in prescriptions %}
+            <tr>
+              <td>{{ prescription.number }}</td>
+              <td>{{ prescription.patient.mrn }} — {{ prescription.patient.full_name }}</td>
+              <td>{{ prescription.patient.allergy_safety_notes|default:"No safety information recorded" }}</td>
+              <td><ul>{% for item in prescription.items.all %}<li>{{ item.medicine.generic_name }} {{ item.medicine.strength }} — {{ item.dosage }} — {{ item.frequency }} — {{ item.quantity }}</li>{% endfor %}</ul></td>
+              <td><a href="{% url 'prescription_print' prescription.pk %}">Print</a></td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5">No issued prescriptions found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </main>
+  </body>
+</html>

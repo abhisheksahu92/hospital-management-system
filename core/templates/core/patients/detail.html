@@ -16,6 +16,7 @@
         <dt>Emergency contact</dt><dd>{{ patient.emergency_contact_name|default:"Not recorded" }} {{ patient.emergency_contact_phone }}</dd>
       </dl>
       {% if can_edit %}<p><a href="{% url 'patient_update' patient.pk %}">Update demographics</a></p>{% endif %}
+      {% if can_view_clinical %}<p><a href="{% url 'clinical_history' patient.pk %}">Clinical history</a></p>{% endif %}
       <p><a href="{% url 'patient_list' %}">Back to patients</a></p>
     </main>
   </body>

@@ -1,7 +1,16 @@
 from django import forms
+from django.forms import inlineformset_factory
 from django.utils import timezone
 
-from .models import Appointment, Patient, StaffProfile, VisitType
+from .models import (
+    Appointment,
+    Consultation,
+    Patient,
+    Prescription,
+    PrescriptionItem,
+    StaffProfile,
+    VisitType,
+)
 
 
 class PatientForm(forms.ModelForm):
@@ -70,3 +79,47 @@ class AppointmentForm(forms.ModelForm):
                     "This doctor already has an active appointment at that start time.",
                 )
         return cleaned_data
+
+
+class ConsultationForm(forms.ModelForm):
+    class Meta:
+        model = Consultation
+        fields = ("clinical_notes", "diagnosis")
+        widgets = {
+            "clinical_notes": forms.Textarea(attrs={"rows": 6}),
+            "diagnosis": forms.Textarea(attrs={"rows": 3}),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not cleaned_data.get("clinical_notes") and not cleaned_data.get("diagnosis"):
+            raise forms.ValidationError("Enter clinical notes or a diagnosis.")
+        return cleaned_data
+
+
+class PrescriptionItemForm(forms.ModelForm):
+    class Meta:
+        model = PrescriptionItem
+        fields = (
+            "medicine",
+            "dosage",
+            "frequency",
+            "duration",
+            "instructions",
+            "quantity",
+        )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["medicine"].queryset = self.fields["medicine"].queryset.filter(
+            is_active=True
+        )
+
+
+PrescriptionItemFormSet = inlineformset_factory(
+    Prescription,
+    PrescriptionItem,
+    form=PrescriptionItemForm,
+    extra=1,
+    can_delete=False,
+)

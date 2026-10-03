@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Consultation | Hospital Management System</title>
+  </head>
+  <body>
+    <main>
+      <h1>Consultation</h1>
+      <p>{{ consultation.patient.mrn }} — {{ consultation.patient.full_name }}</p>
+      <p>Doctor: {{ consultation.doctor.user.get_full_name|default:consultation.doctor.user.username }}</p>
+      <p>Allergy/safety information: {{ consultation.patient.allergy_safety_notes|default:"No safety information recorded" }}</p>
+      <h2>Clinical notes</h2>
+      <p>{{ consultation.clinical_notes|linebreaksbr }}</p>
+      <h2>Diagnosis</h2>
+      <p>{{ consultation.diagnosis|linebreaksbr }}</p>
+      <h2>Prescriptions</h2>
+      <ul>
+        {% for prescription in prescriptions %}
+          <li><a href="{% url 'prescription_print' prescription.pk %}">{{ prescription.number }} — {{ prescription.get_status_display }}</a></li>
+        {% empty %}
+          <li>No prescription issued.</li>
+        {% endfor %}
+      </ul>
+      <p><a href="{% url 'clinical_history' consultation.patient.pk %}">Back to clinical history</a></p>
+    </main>
+  </body>
+</html>

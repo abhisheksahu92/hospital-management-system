@@ -13,6 +13,7 @@ from django.urls import reverse
 from .models import (
     Appointment,
     AuditEvent,
+    Consultation,
     Department,
     HospitalSettings,
     Invoice,
@@ -21,6 +22,7 @@ from .models import (
     MedicineBatch,
     NumberSequence,
     Patient,
+    Prescription,
     Service,
     StaffProfile,
     StockMovement,
@@ -895,3 +897,259 @@ class AppointmentWorkflowTests(TestCase):
             ).status_code,
             403,
         )
+
+
+class ClinicalWorkflowTests(TestCase):
+    def setUp(self):
+        call_command("bootstrap_hospital", stdout=None)
+        self.doctor = get_user_model().objects.create_user(
+            username="clinical-doctor", password="Synthetic-Password-123!"
+        )
+        self.doctor.groups.add(Group.objects.get(name="Doctor"))
+        self.doctor_profile = StaffProfile.objects.create(
+            user=self.doctor, employee_id="CLINICAL-DOC-001"
+        )
+        self.other_doctor = get_user_model().objects.create_user(
+            username="clinical-other-doctor"
+        )
+        self.other_profile = StaffProfile.objects.create(
+            user=self.other_doctor, employee_id="CLINICAL-DOC-002"
+        )
+        self.reception = get_user_model().objects.create_user(
+            username="clinical-reception"
+        )
+        self.reception.groups.add(Group.objects.get(name="Reception"))
+        self.pharmacy = get_user_model().objects.create_user(
+            username="clinical-pharmacy"
+        )
+        self.pharmacy.groups.add(Group.objects.get(name="Pharmacy"))
+        self.patient = Patient.objects.create(
+            mrn="CLINICAL-PATIENT-001",
+            full_name="Synthetic Clinical Patient",
+            allergy_safety_notes="Synthetic allergy warning",
+        )
+        visit_type = VisitType.objects.create(
+            code="CLINICAL-VISIT", name="Clinical Visit"
+        )
+        self.appointment = Appointment.objects.create(
+            patient=self.patient,
+            doctor=self.doctor_profile,
+            visit_type=visit_type,
+            scheduled_at="2026-12-04T09:00:00Z",
+            status=Appointment.Status.IN_PROGRESS,
+        )
+        self.medicine = Medicine.objects.create(
+            code="CLINICAL-MED-001",
+            generic_name="Synthetic Medicine",
+            strength="10 mg",
+            unit="tablet",
+        )
+
+    def prescription_post_data(self, **overrides):
+        data = {
+            "clinical_notes": "Synthetic consultation notes",
+            "diagnosis": "Synthetic diagnosis",
+            "items-TOTAL_FORMS": "1",
+            "items-INITIAL_FORMS": "0",
+            "items-MIN_NUM_FORMS": "0",
+            "items-MAX_NUM_FORMS": "1000",
+            "items-0-medicine": str(self.medicine.pk),
+            "items-0-dosage": "1 tablet",
+            "items-0-frequency": "twice daily",
+            "items-0-duration": "5 days",
+            "items-0-instructions": "Synthetic instructions",
+            "items-0-quantity": "10",
+        }
+        data.update(overrides)
+        return data
+
+    def test_doctor_creates_consultation_and_issued_prescription(self):
+        self.client.force_login(self.doctor)
+
+        response = self.client.post(
+            reverse("consultation_create", args=[self.appointment.pk]),
+            self.prescription_post_data(),
+        )
+
+        consultation = Consultation.objects.get(appointment=self.appointment)
+        prescription = Prescription.objects.get(consultation=consultation)
+        item = prescription.items.get()
+        self.assertRedirects(
+            response, reverse("consultation_detail", args=[consultation.pk])
+        )
+        self.assertEqual(consultation.doctor, self.doctor_profile)
+        self.assertEqual(consultation.patient, self.patient)
+        self.assertEqual(prescription.number, "1")
+        self.assertEqual(prescription.status, Prescription.Status.ISSUED)
+        self.assertEqual(item.quantity, Decimal("10"))
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="clinical.consultation_created",
+                target_id=str(consultation.pk),
+            ).exists()
+        )
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="clinical.prescription_issued",
+                target_id=str(prescription.pk),
+            ).exists()
+        )
+
+    def test_duplicate_submission_reuses_existing_encounter(self):
+        self.client.force_login(self.doctor)
+        url = reverse("consultation_create", args=[self.appointment.pk])
+        self.client.post(url, self.prescription_post_data())
+
+        response = self.client.post(
+            url,
+            self.prescription_post_data(
+                clinical_notes="Duplicate synthetic note",
+                diagnosis="Duplicate synthetic diagnosis",
+            ),
+        )
+
+        self.assertEqual(
+            Consultation.objects.filter(appointment=self.appointment).count(), 1
+        )
+        self.assertRedirects(
+            response,
+            reverse(
+                "consultation_detail",
+                args=[Consultation.objects.get(appointment=self.appointment).pk],
+            ),
+        )
+
+    def test_doctor_cannot_open_another_doctors_appointment(self):
+        other_appointment = Appointment.objects.create(
+            patient=self.patient,
+            doctor=self.other_profile,
+            visit_type=self.appointment.visit_type,
+            scheduled_at="2026-12-04T10:00:00Z",
+            status=Appointment.Status.IN_PROGRESS,
+        )
+        self.client.force_login(self.doctor)
+
+        response = self.client.get(
+            reverse("consultation_create", args=[other_appointment.pk])
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_clinical_history_shows_only_notes_authored_by_current_doctor(self):
+        own = Consultation.objects.create(
+            appointment=self.appointment,
+            patient=self.patient,
+            doctor=self.doctor_profile,
+            clinical_notes="Own synthetic clinical note",
+            diagnosis="Own synthetic diagnosis",
+        )
+        Consultation.objects.create(
+            patient=self.patient,
+            doctor=self.other_profile,
+            clinical_notes="Other doctor confidential note",
+            diagnosis="Other doctor diagnosis",
+        )
+        self.client.force_login(self.doctor)
+
+        response = self.client.get(reverse("clinical_history", args=[self.patient.pk]))
+
+        self.assertContains(response, "Own synthetic diagnosis")
+        self.assertNotContains(response, "Other doctor diagnosis")
+        detail = self.client.get(reverse("consultation_detail", args=[own.pk]))
+        self.assertContains(detail, "Own synthetic clinical note")
+        self.assertNotContains(detail, "Other doctor confidential note")
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                action="clinical.history_viewed", target_id=str(self.patient.pk)
+            ).exists()
+        )
+
+    def test_empty_consultation_is_rejected(self):
+        self.client.force_login(self.doctor)
+        response = self.client.post(
+            reverse("consultation_create", args=[self.appointment.pk]),
+            {
+                "clinical_notes": "",
+                "diagnosis": "",
+                "items-TOTAL_FORMS": "1",
+                "items-INITIAL_FORMS": "0",
+                "items-MIN_NUM_FORMS": "0",
+                "items-MAX_NUM_FORMS": "1000",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Consultation.objects.count(), 0)
+
+    def test_reception_and_pharmacy_cannot_read_or_write_clinical_records(self):
+        for user in (self.reception, self.pharmacy):
+            self.client.force_login(user)
+            with self.subTest(user=user.username):
+                self.assertEqual(
+                    self.client.get(
+                        reverse("consultation_create", args=[self.appointment.pk])
+                    ).status_code,
+                    403,
+                )
+                self.assertEqual(
+                    self.client.get(
+                        reverse("clinical_history", args=[self.patient.pk])
+                    ).status_code,
+                    403,
+                )
+
+    def test_pharmacy_sees_only_prescription_and_safety_data(self):
+        consultation = Consultation.objects.create(
+            appointment=self.appointment,
+            patient=self.patient,
+            doctor=self.doctor_profile,
+            clinical_notes="Confidential synthetic clinical note",
+            diagnosis="Confidential synthetic diagnosis",
+        )
+        prescription = Prescription.objects.create(
+            number="CLINICAL-RX-001",
+            consultation=consultation,
+            patient=self.patient,
+            doctor=self.doctor_profile,
+            status=Prescription.Status.ISSUED,
+        )
+        prescription.items.create(
+            medicine=self.medicine,
+            dosage="1 tablet",
+            frequency="daily",
+            duration="5 days",
+            instructions="Synthetic instructions",
+            quantity=Decimal("5"),
+        )
+        self.client.force_login(self.pharmacy)
+
+        queue = self.client.get(reverse("pharmacy_prescription_list"))
+        printed = self.client.get(reverse("prescription_print", args=[prescription.pk]))
+
+        for response in (queue, printed):
+            self.assertContains(response, "Synthetic allergy warning")
+            self.assertContains(response, "Synthetic Medicine")
+            self.assertNotContains(response, "Confidential synthetic clinical note")
+            self.assertNotContains(response, "Confidential synthetic diagnosis")
+
+        self.assertEqual(
+            self.client.get(
+                reverse("consultation_detail", args=[consultation.pk])
+            ).status_code,
+            403,
+        )
+
+    def test_pharmacy_cannot_print_unissued_prescription(self):
+        prescription = Prescription.objects.create(
+            number="CLINICAL-DRAFT-001",
+            patient=self.patient,
+            doctor=self.doctor_profile,
+            status=Prescription.Status.DRAFT,
+        )
+        self.client.force_login(self.pharmacy)
+
+        response = self.client.get(
+            reverse("prescription_print", args=[prescription.pk])
+        )
+
+        self.assertEqual(response.status_code, 404)
