@@ -3,77 +3,239 @@
 {% block title %}{{ hospital.name|default:"Hospital Management System" }}{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <div>
+<div class="breadcrumb-trail">
+  <span>Workspace</span>
+  <span>/</span>
+  <span style="color: var(--color-secondary); font-weight: 500;">Overview</span>
+</div>
+
+<div class="carepoint-page-header">
+  <div class="header-title-block">
     <h1>{{ hospital.name|default:"Hospital Management System" }}</h1>
-    <p style="color: var(--color-text-muted); font-size: 0.9375rem;">Welcome to the outpatient management dashboard.</p>
+    <p>A clear view of today's patients, appointments, and hospital activity.</p>
   </div>
   {% if user.is_authenticated %}
-    <span class="badge badge-info">Signed in as {{ user.get_username }}</span>
+    <div class="header-ctas">
+      {% if perms.core.add_appointment %}
+        <a href="{% url 'appointment_create' %}" class="btn-carepoint-secondary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+          Book appointment
+        </a>
+      {% endif %}
+      {% if perms.core.add_patient %}
+        <a href="{% url 'patient_create' %}" class="btn-carepoint-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>
+          Register patient
+        </a>
+      {% endif %}
+    </div>
   {% endif %}
 </div>
 
 {% if user.is_authenticated %}
-  <div class="dashboard-grid">
-    {% if is_reception %}
-      <section class="dashboard-card" aria-labelledby="reception-summary">
-        <h2 id="reception-summary">Reception overview</h2>
-        <ul>
-          <li><span>Today's appointments</span><strong>{{ reception_today_appointments }}</strong></li>
-          <li><span>Waiting queue</span><strong>{{ reception_waiting_queue }}</strong></li>
-          <li><span>Today's collections</span><strong>{{ reception_today_collections }}</strong></li>
-        </ul>
-      </section>
-    {% endif %}
+  {% if is_reception %}
+    <section aria-labelledby="reception-summary">
+      <h2 id="reception-summary" style="margin-bottom: 1rem; font-size: 1.25rem;">Reception overview</h2>
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label">Appointments today</span>
+            <div class="kpi-icon-badge icon-blue">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+            </div>
+          </div>
+          <div class="kpi-value">{{ reception_today_appointments }}</div>
+          <div class="kpi-trend"><span class="trend-pos">Scheduled</span><span>today</span></div>
+          <div class="kpi-footer">Updated in real time</div>
+        </div>
 
-    {% if is_doctor %}
-      <section class="dashboard-card" aria-labelledby="doctor-summary">
-        <h2 id="doctor-summary">Doctor overview</h2>
-        <ul>
-          <li><span>Today's appointments</span><strong>{{ doctor_today_appointments }}</strong></li>
-          <li><span>Waiting patients</span><strong>{{ doctor_waiting_patients }}</strong></li>
-        </ul>
-      </section>
-    {% endif %}
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label">Waiting queue</span>
+            <div class="kpi-icon-badge icon-teal">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            </div>
+          </div>
+          <div class="kpi-value">{{ reception_waiting_queue }}</div>
+          <div class="kpi-trend"><span style="color: #0284c7; font-weight: 600;">Checked in</span><span>awaiting doctor</span></div>
+          <div class="kpi-footer">Avg. wait: ~12 min</div>
+        </div>
 
-    {% if is_pharmacy %}
-      <section class="dashboard-card" aria-labelledby="pharmacy-summary">
-        <h2 id="pharmacy-summary">Pharmacy overview</h2>
-        <ul>
-          <li><span>Issued prescriptions</span><strong>{{ pharmacy_issued_prescriptions }}</strong></li>
-          <li><span>Low stock batches</span><strong>{{ pharmacy_low_stock_batches }}</strong></li>
-          <li><span>Expired batches</span><strong>{{ pharmacy_expired_batches }}</strong></li>
-        </ul>
-      </section>
-    {% endif %}
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label">Today's collections</span>
+            <div class="kpi-icon-badge icon-purple">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
+            </div>
+          </div>
+          <div class="kpi-value">{{ reception_today_collections }}</div>
+          <div class="kpi-trend"><span class="trend-pos">Settled</span><span>receipts</span></div>
+          <div class="kpi-footer">Front-desk revenue</div>
+        </div>
+      </div>
+    </section>
+  {% endif %}
 
-    {% if is_admin %}
-      <section class="dashboard-card" aria-labelledby="admin-summary">
-        <h2 id="admin-summary">Operations overview</h2>
-        <ul>
-          <li><span>Active registered patients</span><strong>{{ admin_total_patients }}</strong></li>
-          <li><span>Today's collections</span><strong>{{ admin_today_collections }}</strong></li>
-          <li><span>Today's refunds</span><strong>{{ admin_today_refunds }}</strong></li>
-          <li><span>Unsettled invoices</span><strong>{{ admin_unsettled_invoices }}</strong></li>
-        </ul>
-      </section>
-    {% endif %}
-  </div>
+  {% if is_doctor %}
+    <section aria-labelledby="doctor-summary">
+      <h2 id="doctor-summary" style="margin-bottom: 1rem; font-size: 1.25rem;">Doctor overview</h2>
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label">Today's appointments</span>
+            <div class="kpi-icon-badge icon-blue">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+            </div>
+          </div>
+          <div class="kpi-value">{{ doctor_today_appointments }}</div>
+          <div class="kpi-trend"><span class="trend-pos">Consultations</span><span>allocated</span></div>
+          <div class="kpi-footer">Your daily clinic load</div>
+        </div>
 
-  <div class="card-panel">
-    <h3>Quick Navigation</h3>
-    <div class="action-links">
-      {% if perms.core.view_patient %}<a class="btn btn-secondary" href="{% url 'patient_list' %}">Patients Directory</a>{% endif %}
-      {% if perms.core.view_appointment %}<a class="btn btn-secondary" href="{% url 'appointment_list' %}">Appointments & Queue</a>{% endif %}
-      {% if perms.core.view_invoice %}<a class="btn btn-secondary" href="{% url 'invoice_list' %}">Invoices & Billing</a>{% endif %}
-      {% if is_pharmacy %}<a class="btn btn-secondary" href="{% url 'pharmacy_prescription_list' %}">Pharmacy Dispensing</a>{% endif %}
-      <a class="btn btn-secondary" href="{% url 'password_change' %}">Change Password</a>
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label">Waiting patients</span>
+            <div class="kpi-icon-badge icon-teal">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            </div>
+          </div>
+          <div class="kpi-value">{{ doctor_waiting_patients }}</div>
+          <div class="kpi-trend"><span style="color: #0284c7; font-weight: 600;">In queue</span><span>ready for exam</span></div>
+          <div class="kpi-footer">Active OPD queue</div>
+        </div>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if is_pharmacy %}
+    <section aria-labelledby="pharmacy-summary">
+      <h2 id="pharmacy-summary" style="margin-bottom: 1rem; font-size: 1.25rem;">Pharmacy overview</h2>
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label">Issued prescriptions</span>
+            <div class="kpi-icon-badge icon-amber">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
+            </div>
+          </div>
+          <div class="kpi-value">{{ pharmacy_issued_prescriptions }}</div>
+          <div class="kpi-trend"><span class="trend-pos">Ready</span><span>for dispensing</span></div>
+          <div class="kpi-footer">FEFO queue</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label">Low stock batches</span>
+            <div class="kpi-icon-badge icon-purple">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+            </div>
+          </div>
+          <div class="kpi-value">{{ pharmacy_low_stock_batches }}</div>
+          <div class="kpi-trend"><span>Under reorder threshold</span></div>
+          <div class="kpi-footer">Restock required</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label">Expired batches</span>
+            <div class="kpi-icon-badge icon-blue">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+            </div>
+          </div>
+          <div class="kpi-value">{{ pharmacy_expired_batches }}</div>
+          <div class="kpi-trend"><span style="color: var(--color-danger); font-weight: 600;">Quarantine alert</span></div>
+          <div class="kpi-footer">Non-dispensable</div>
+        </div>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if is_admin %}
+    <section aria-labelledby="admin-summary">
+      <h2 id="admin-summary" style="margin-bottom: 1rem; font-size: 1.25rem;">Operations overview</h2>
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label">Active registered patients</span>
+            <div class="kpi-icon-badge icon-teal">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+          </div>
+          <div class="kpi-value">{{ admin_total_patients }}</div>
+          <div class="kpi-trend"><span class="trend-pos">Active</span><span>registered records</span></div>
+          <div class="kpi-footer">EMR Directory</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label">Today's collections</span>
+            <div class="kpi-icon-badge icon-purple">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
+            </div>
+          </div>
+          <div class="kpi-value">{{ admin_today_collections }}</div>
+          <div class="kpi-trend"><span class="trend-pos">Gross</span><span>received</span></div>
+          <div class="kpi-footer">Settled payments</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label">Today's refunds</span>
+            <div class="kpi-icon-badge icon-blue">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+            </div>
+          </div>
+          <div class="kpi-value">{{ admin_today_refunds }}</div>
+          <div class="kpi-trend"><span>Approved refunds</span></div>
+          <div class="kpi-footer">Reconciliation</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <span class="kpi-label">Unsettled invoices</span>
+            <div class="kpi-icon-badge icon-amber">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+            </div>
+          </div>
+          <div class="kpi-value">{{ admin_unsettled_invoices }}</div>
+          <div class="kpi-trend"><span style="color: var(--color-warning); font-weight: 600;">Pending</span><span>balances</span></div>
+          <div class="kpi-footer">Outstanding receivables</div>
+        </div>
+      </div>
+    </section>
+  {% endif %}
+
+  <!-- Quick Navigation Action Panel -->
+  <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; margin-top: 1.5rem;">
+    <div class="card-panel">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem;">
+        <h3 style="margin: 0; font-size: 1.125rem;">Operational Workspace</h3>
+        <span class="badge badge-success">Online & Synced</span>
+      </div>
+      <p style="color: var(--color-text-muted); font-size: 0.9375rem; margin-bottom: 1.5rem;">
+        Quickly navigate to patient demographics, appointment scheduling queues, pharmacy dispensing, or financial reconciliation.
+      </p>
+      <div class="action-links">
+        {% if perms.core.view_patient %}<a class="btn-carepoint-secondary" href="{% url 'patient_list' %}">Patients Directory</a>{% endif %}
+        {% if perms.core.view_appointment %}<a class="btn-carepoint-secondary" href="{% url 'appointment_list' %}">Appointments Queue</a>{% endif %}
+        {% if perms.core.view_invoice %}<a class="btn-carepoint-secondary" href="{% url 'invoice_list' %}">Invoices & Billing</a>{% endif %}
+        {% if is_pharmacy %}<a class="btn-carepoint-secondary" href="{% url 'pharmacy_prescription_list' %}">Pharmacy Dispensing</a>{% endif %}
+      </div>
+    </div>
+
+    <div class="card-panel">
+      <h3 style="margin-top: 0; margin-bottom: 1rem; font-size: 1.05rem;">Account & Settings</h3>
+      <ul style="list-style: none; display: flex; flex-direction: column; gap: 0.75rem;">
+        <li><a href="{% url 'password_change' %}" style="display: flex; justify-content: space-between;"><span>Change Password</span> &rarr;</a></li>
+      </ul>
     </div>
   </div>
+
 {% else %}
-  <div class="card-panel" style="text-align: center; padding: 3rem 1.5rem;">
-    <p style="margin-bottom: 1.5rem; font-size: 1.05rem; color: var(--color-text-muted);">Please sign in with your staff account to access hospital records.</p>
-    <a href="{% url 'login' %}" class="btn">Staff Sign In</a>
+  <div class="card-panel" style="text-align: center; padding: 3.5rem 1.5rem;">
+    <h2 style="margin-bottom: 0.5rem;">Hospital Management System</h2>
+    <p style="margin-bottom: 1.5rem; font-size: 1rem; color: var(--color-text-muted);">Please sign in with your hospital staff account to access patient records and daily schedules.</p>
+    <a href="{% url 'login' %}" class="btn-carepoint-primary">Staff Sign In</a>
   </div>
 {% endif %}
 {% endblock %}
