@@ -1,122 +1,230 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Invoice {{ invoice.number }} | Hospital Management System</title>
-  </head>
-  <body>
-    <main>
-      {% if messages %}<ul class="messages">{% for message in messages %}<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>{% endfor %}</ul>{% endif %}
-      <h1>Invoice {{ invoice.number }}</h1>
-      <p>{% if invoice.patient %}{{ invoice.patient.full_name }} ({{ invoice.patient.mrn }}){% else %}Walk-in sale{% endif %}</p>
-      <p>Status: {{ invoice.get_status_display }}</p>
-      <table>
-        <thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th>Discount</th><th>Total</th></tr></thead>
-        <tbody>
-          {% for line in invoice.lines.all %}
-            <tr><td>{{ line.description }}</td><td>{{ line.quantity }}</td><td>{{ line.unit_price }}</td><td>{{ line.discount_amount }}</td><td>{{ line.line_total }}</td></tr>
+{% extends "core/base.html" %}
+
+{% block title %}Invoice {{ invoice.number }} | {{ hospital.name|default:"Hospital Management System" }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Invoice {{ invoice.number }}</h1>
+    <p style="color: var(--color-text-muted); font-size: 0.9375rem;">
+      {% if invoice.patient %}{{ invoice.patient.full_name }} ({{ invoice.patient.mrn }}){% else %}Walk-in sale{% endif %}
+    </p>
+  </div>
+  <span class="badge">{{ invoice.get_status_display }}</span>
+</div>
+
+<h2>Line Items</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Description</th>
+      <th>Qty</th>
+      <th>Unit price</th>
+      <th>Discount</th>
+      <th>Total</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for line in invoice.lines.all %}
+      <tr>
+        <td>{{ line.description }}</td>
+        <td>{{ line.quantity }}</td>
+        <td>{{ line.unit_price }}</td>
+        <td>{{ line.discount_amount }}</td>
+        <td><strong>{{ line.line_total }}</strong></td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<dl class="details-grid">
+  <dt>Subtotal</dt><dd>{{ invoice.subtotal }}</dd>
+  <dt>Discount</dt><dd>{{ invoice.discount_total }}</dd>
+  <dt>Tax</dt><dd>{{ invoice.tax_total }}</dd>
+  <dt>Total</dt><dd><strong>{{ invoice.total }}</strong></dd>
+  <dt>Balance</dt>
+  <dd>
+    {% if outstanding > 0 %}
+      <strong style="color: var(--color-danger);">{{ outstanding }}</strong>
+    {% else %}
+      <strong style="color: var(--color-success);">0.00</strong>
+    {% endif %}
+  </dd>
+</dl>
+
+<h2>Payments Received</h2>
+<div class="card-panel">
+  <ul style="list-style: none;">
+    {% for payment in invoice.payments.all %}
+      <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
+        <span><strong>{{ payment.receipt_number }}</strong>: {{ payment.amount }} via {{ payment.method.name }}</span>
+        <div>
+          {% for refund in payment.refunds.all %}
+            <span class="badge badge-warning">Refund {{ refund.amount }} ({{ refund.get_status_display }})</span>
           {% endfor %}
-        </tbody>
-      </table>
-      <dl>
-        <dt>Subtotal</dt><dd>{{ invoice.subtotal }}</dd>
-        <dt>Discount</dt><dd>{{ invoice.discount_total }}</dd>
-        <dt>Tax</dt><dd>{{ invoice.tax_total }}</dd>
-        <dt>Total</dt><dd>{{ invoice.total }}</dd>
-        <dt>Balance</dt><dd>{{ outstanding }}</dd>
-      </dl>
+        </div>
+      </li>
+    {% empty %}
+      <li style="color: var(--color-text-muted);">No payments recorded yet.</li>
+    {% endfor %}
+  </ul>
+</div>
 
-      <h2>Payments</h2>
-      <ul>
-        {% for payment in invoice.payments.all %}
-          <li>{{ payment.receipt_number }}: {{ payment.amount }} via {{ payment.method.name }}
-            {% for refund in payment.refunds.all %}
-              <span>Refund {{ refund.amount }} ({{ refund.get_status_display }})</span>
-            {% endfor %}
-          </li>
-        {% empty %}<li>No payments recorded.</li>{% endfor %}
-      </ul>
-      <h2>Adjustments</h2>
-      <ul>
-        {% for adjustment in invoice.adjustments.all %}
-          <li>{{ adjustment.amount }}: {{ adjustment.reason }}</li>
-        {% empty %}<li>No adjustments recorded.</li>{% endfor %}
-      </ul>
+<h2>Billing Adjustments</h2>
+<div class="card-panel">
+  <ul style="list-style: none;">
+    {% for adjustment in invoice.adjustments.all %}
+      <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--color-border);">
+        <strong>{{ adjustment.amount }}</strong>: {{ adjustment.reason }}
+      </li>
+    {% empty %}
+      <li style="color: var(--color-text-muted);">No adjustments recorded.</li>
+    {% endfor %}
+  </ul>
+</div>
 
-      {% if pharmacy_returns %}
-        <h2>Pharmacy return requests</h2>
-        {% for pharmacy_return in pharmacy_returns %}
-          <section>
-            <h3>{{ pharmacy_return.number }}: {{ pharmacy_return.refund_total }}</h3>
-            <p>{{ pharmacy_return.reason }}</p>
-            <ul>{% for line in pharmacy_return.lines.all %}<li>{% if line.sale_line %}Sale line {{ line.sale_line_id }}{% else %}Dispensing line {{ line.dispensing_line_id }}{% endif %}: {{ line.quantity }} units, {{ line.refund_amount }}</li>{% endfor %}</ul>
-            {% if is_admin and invoice.payments.all %}
-              <form method="post" action="{% url 'invoice_refund' invoice.pk %}">
-                {% csrf_token %}
-                <input type="hidden" name="pharmacy_return" value="{{ pharmacy_return.pk }}">
-                <label>Payment <select name="payment" required>{% for payment in invoice.payments.all %}<option value="{{ payment.pk }}">{{ payment.receipt_number }} - {{ payment.amount }}</option>{% endfor %}</select></label>
-                <label>Amount <input type="number" name="amount" value="{{ pharmacy_return.refund_total }}" max="{{ pharmacy_return.refund_total }}" min="0.01" step="0.01" required></label>
-                <label>Reason <input name="reason" value="{{ pharmacy_return.reason }}" required></label>
-                <button type="submit">Issue return refund</button>
-              </form>
-            {% endif %}
-            {% if is_admin %}
-              <form method="post" action="{% url 'pharmacy_return_reject' pharmacy_return.pk %}">
-                {% csrf_token %}
-                <label>Rejection reason <input name="reason" required></label>
-                <button type="submit">Reject return</button>
-              </form>
-            {% endif %}
-          </section>
+{% if pharmacy_returns %}
+  <h2>Pharmacy Return Requests</h2>
+  {% for pharmacy_return in pharmacy_returns %}
+    <div class="card-panel">
+      <h3>{{ pharmacy_return.number }}: {{ pharmacy_return.refund_total }}</h3>
+      <p style="margin-bottom: 0.75rem; color: var(--color-text-muted);">Reason: {{ pharmacy_return.reason }}</p>
+      <ul style="margin-left: 1.25rem; margin-bottom: 1rem;">
+        {% for line in pharmacy_return.lines.all %}
+          <li>{% if line.sale_line %}Sale line {{ line.sale_line_id }}{% else %}Dispensing line {{ line.dispensing_line_id }}{% endif %}: {{ line.quantity }} units, {{ line.refund_amount }}</li>
         {% endfor %}
+      </ul>
+      {% if is_admin and invoice.payments.all %}
+        <form method="post" action="{% url 'invoice_refund' invoice.pk %}" style="margin-bottom: 1rem;">
+          {% csrf_token %}
+          <input type="hidden" name="pharmacy_return" value="{{ pharmacy_return.pk }}">
+          <p>
+            <label>Payment Receipt</label>
+            <select name="payment" required>
+              {% for payment in invoice.payments.all %}
+                <option value="{{ payment.pk }}">{{ payment.receipt_number }} - {{ payment.amount }}</option>
+              {% endfor %}
+            </select>
+          </p>
+          <p>
+            <label>Refund Amount</label>
+            <input type="number" name="amount" value="{{ pharmacy_return.refund_total }}" max="{{ pharmacy_return.refund_total }}" min="0.01" step="0.01" required>
+          </p>
+          <p>
+            <label>Refund Reason</label>
+            <input name="reason" value="{{ pharmacy_return.reason }}" required>
+          </p>
+          <button type="submit">Issue return refund</button>
+        </form>
       {% endif %}
+      {% if is_admin %}
+        <form method="post" action="{% url 'pharmacy_return_reject' pharmacy_return.pk %}">
+          {% csrf_token %}
+          <p>
+            <label>Rejection reason</label>
+            <input name="reason" required>
+          </p>
+          <button type="submit" class="btn-danger">Reject return</button>
+        </form>
+      {% endif %}
+    </div>
+  {% endfor %}
+{% endif %}
 
-      {% if invoice.status == "issued" and is_reception and outstanding > 0 %}
-        <h2>Record payment</h2>
-        <form method="post" action="{% url 'payment_create' invoice.pk %}">
-          {% csrf_token %}
-          <label>Method <select name="method" required>{% for method in payment_methods %}<option value="{{ method.pk }}">{{ method.name }}</option>{% endfor %}</select></label>
-          <label>Amount <input type="number" name="amount" min="0.01" max="{{ outstanding }}" step="0.01" required></label>
-          <label>Reference <input name="reference" maxlength="100"></label>
-          <button type="submit">Record payment</button>
-        </form>
-      {% endif %}
+{% if invoice.status == "issued" and is_reception and outstanding > 0 %}
+  <h2>Record Payment</h2>
+  <div class="card-panel">
+    <form method="post" action="{% url 'payment_create' invoice.pk %}">
+      {% csrf_token %}
+      <p>
+        <label>Payment Method</label>
+        <select name="method" required>
+          {% for method in payment_methods %}
+            <option value="{{ method.pk }}">{{ method.name }}</option>
+          {% endfor %}
+        </select>
+      </p>
+      <p>
+        <label>Payment Amount</label>
+        <input type="number" name="amount" min="0.01" max="{{ outstanding }}" step="0.01" value="{{ outstanding }}" required>
+      </p>
+      <p>
+        <label>Reference / Transaction Note</label>
+        <input name="reference" maxlength="100" placeholder="e.g. Bank/UPI transaction ref">
+      </p>
+      <button type="submit">Record payment</button>
+    </form>
+  </div>
+{% endif %}
 
-      {% if invoice.status == "issued" and is_admin %}
-        <h2>Administrator actions</h2>
-        <form method="post" action="{% url 'invoice_adjustment' invoice.pk %}">
+{% if invoice.status == "issued" and is_admin %}
+  <h2>Administrator Actions</h2>
+  <div class="card-panel">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem;">
+      <form method="post" action="{% url 'invoice_adjustment' invoice.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="kind" value="discount">
+        <p>
+          <label>Discount amount</label>
+          <input type="number" name="amount" min="0.01" max="{{ outstanding }}" step="0.01" required>
+        </p>
+        <p>
+          <label>Reason</label>
+          <input name="reason" required>
+        </p>
+        <button type="submit">Apply discount</button>
+      </form>
+
+      <form method="post" action="{% url 'invoice_adjustment' invoice.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="kind" value="adjustment">
+        <p>
+          <label>Adjustment amount (+/-)</label>
+          <input type="number" name="amount" step="0.01" required>
+        </p>
+        <p>
+          <label>Reason</label>
+          <input name="reason" required>
+        </p>
+        <button type="submit">Record adjustment</button>
+      </form>
+    </div>
+
+    {% for payment in invoice.payments.all %}
+      <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--color-border);">
+        <form method="post" action="{% url 'invoice_refund' invoice.pk %}">
           {% csrf_token %}
-          <input type="hidden" name="kind" value="discount">
-          <label>Discount amount <input type="number" name="amount" min="0.01" max="{{ outstanding }}" step="0.01" required></label>
-          <label>Reason <input name="reason" required></label>
-          <button type="submit">Apply discount</button>
+          <input type="hidden" name="payment" value="{{ payment.pk }}">
+          <p>
+            <label>Refund amount for receipt {{ payment.receipt_number }}</label>
+            <input type="number" name="amount" min="0.01" max="{{ payment.amount }}" step="0.01" required>
+          </p>
+          <p>
+            <label>Reason</label>
+            <input name="reason" required>
+          </p>
+          <button type="submit" class="btn-danger">Issue refund</button>
         </form>
-        <form method="post" action="{% url 'invoice_adjustment' invoice.pk %}">
+      </div>
+    {% endfor %}
+
+    {% if can_void %}
+      <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--color-border);">
+        <form method="post" action="{% url 'invoice_void' invoice.pk %}">
           {% csrf_token %}
-          <input type="hidden" name="kind" value="adjustment">
-          <label>Adjustment amount (+/-) <input type="number" name="amount" step="0.01" required></label>
-          <label>Reason <input name="reason" required></label>
-          <button type="submit">Record adjustment</button>
+          <p>
+            <label>Void reason</label>
+            <input name="reason" required placeholder="Reason for voiding entire invoice...">
+          </p>
+          <button type="submit" class="btn-danger">Void invoice</button>
         </form>
-        {% for payment in invoice.payments.all %}
-          <form method="post" action="{% url 'invoice_refund' invoice.pk %}">
-            {% csrf_token %}
-            <input type="hidden" name="payment" value="{{ payment.pk }}">
-            <label>Refund amount for {{ payment.receipt_number }} <input type="number" name="amount" min="0.01" max="{{ payment.amount }}" step="0.01" required></label>
-            <label>Reason <input name="reason" required></label>
-            <button type="submit">Issue refund</button>
-          </form>
-        {% endfor %}
-        {% if can_void %}
-          <form method="post" action="{% url 'invoice_void' invoice.pk %}">
-            {% csrf_token %}
-            <label>Void reason <input name="reason" required></label>
-            <button type="submit">Void invoice</button>
-          </form>
-        {% endif %}
-      {% endif %}
-      {% if can_back_to_patient %}<p><a href="{% url 'patient_detail' invoice.patient_id %}">Back to patient</a></p>{% endif %}
-    </main>
-  </body>
-</html>
+      </div>
+    {% endif %}
+  </div>
+{% endif %}
+
+<div class="action-links">
+  {% if can_back_to_patient %}<a href="{% url 'patient_detail' invoice.patient_id %}">&larr; Back to patient</a>{% endif %}
+  <a href="{% url 'invoice_list' %}">&larr; Back to invoices</a>
+</div>
+{% endblock %}

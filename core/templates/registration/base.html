@@ -1,13 +1,17 @@
+{% load static %}
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Staff account{% endblock %} | Hospital Management System</title>
+    <link rel="stylesheet" href="{% static 'core/style.css' %}">
   </head>
   <body>
-    <main>
-      {% block content %}{% endblock %}
-    </main>
+    <div class="auth-wrapper">
+      <div class="auth-card">
+        {% block content %}{% endblock %}
+      </div>
+    </div>
   </body>
 </html>

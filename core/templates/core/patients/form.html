@@ -1,35 +1,44 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% if creating %}Register patient{% else %}Update patient{% endif %} | Hospital Management System</title>
-  </head>
-  <body>
-    <main>
-      <h1>{% if creating %}Register patient{% else %}Update demographics{% endif %}</h1>
-      {% if duplicates %}
-        <section role="alert" aria-labelledby="duplicate-heading">
-          <h2 id="duplicate-heading">Possible duplicate patient</h2>
-          <p>Check these records before continuing. No records have been merged.</p>
-          <ul>
-            {% for candidate in duplicates %}
-              <li><a href="{% url 'patient_detail' candidate.pk %}">{{ candidate.mrn }} — {{ candidate.full_name }} — {{ candidate.phone }}</a></li>
-            {% endfor %}
-          </ul>
-          <button form="patient-form" type="submit" name="confirm_duplicate" value="yes">Register as a separate patient</button>
-        </section>
+{% extends "core/base.html" %}
+
+{% block title %}{% if creating %}Register patient{% else %}Update patient{% endif %} | {{ hospital.name|default:"Hospital Management System" }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{% if creating %}Register patient{% else %}Update demographics{% endif %}</h1>
+    <p style="color: var(--color-text-muted); font-size: 0.9375rem;">{% if creating %}Enter new patient profile and contact information.{% else %}Update patient demographic details.{% endif %}</p>
+  </div>
+</div>
+
+{% if duplicates %}
+  <section class="alert-warning-box" role="alert" aria-labelledby="duplicate-heading">
+    <h2 id="duplicate-heading">Possible duplicate patient</h2>
+    <p style="margin-bottom: 0.75rem;">Check these records before continuing. No records have been merged.</p>
+    <ul style="margin-left: 1.25rem; margin-bottom: 1rem;">
+      {% for candidate in duplicates %}
+        <li><a href="{% url 'patient_detail' candidate.pk %}"><strong>{{ candidate.mrn }}</strong> — {{ candidate.full_name }} — {{ candidate.phone }}</a></li>
+      {% endfor %}
+    </ul>
+    <button form="patient-form" type="submit" name="confirm_duplicate" value="yes" class="btn btn-secondary">Register as a separate patient</button>
+  </section>
+{% endif %}
+
+<div class="card-panel">
+  <form id="patient-form" method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <div class="action-links" style="margin-top: 1.5rem;">
+      {% if creating and duplicates %}
+        <button type="submit" name="confirm_duplicate" value="yes">Register as a separate patient</button>
+      {% else %}
+        <button type="submit">{% if creating %}Register patient{% else %}Save changes{% endif %}</button>
       {% endif %}
-      <form id="patient-form" method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-        {% if creating and duplicates %}
-          <button type="submit" name="confirm_duplicate" value="yes">Register as a separate patient</button>
-        {% else %}
-          <button type="submit">{% if creating %}Register patient{% else %}Save changes{% endif %}</button>
-        {% endif %}
-      </form>
-      {% if not creating %}<p><a href="{% url 'patient_detail' patient.pk %}">Cancel</a></p>{% endif %}
-    </main>
-  </body>
-</html>
+      {% if not creating %}
+        <a href="{% url 'patient_detail' patient.pk %}" class="btn btn-secondary">Cancel</a>
+      {% else %}
+        <a href="{% url 'patient_list' %}" class="btn btn-secondary">Cancel</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

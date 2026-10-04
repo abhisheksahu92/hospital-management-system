@@ -1,24 +1,47 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Clinical history | Hospital Management System</title>
-  </head>
-  <body>
-    <main>
-      <h1>Clinical history</h1>
-      <p>{{ patient.mrn }} — {{ patient.full_name }}</p>
-      <p>Allergy/safety information: {{ patient.allergy_safety_notes|default:"No safety information recorded" }}</p>
-      <h2>Your consultations</h2>
-      <ul>
-        {% for consultation in consultations %}
-          <li><a href="{% url 'consultation_detail' consultation.pk %}">{{ consultation.created_at|date:'Y-m-d H:i' }} — {{ consultation.diagnosis|default:"Consultation" }}</a></li>
-        {% empty %}
-          <li>No previous consultations recorded for this doctor.</li>
-        {% endfor %}
-      </ul>
-      <p><a href="{% url 'patient_detail' patient.pk %}">Back to patient</a></p>
-    </main>
-  </body>
-</html>
+{% extends "core/base.html" %}
+
+{% block title %}Clinical history | {{ hospital.name|default:"Hospital Management System" }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Clinical History</h1>
+    <p style="color: var(--color-text-muted); font-size: 0.9375rem;">
+      Patient: <strong>{{ patient.mrn }} — {{ patient.full_name }}</strong>
+    </p>
+  </div>
+</div>
+
+<div class="alert-warning-box" style="background-color: #fff7ed; border-color: #fed7aa;">
+  <strong style="color: #c2410c;">Allergy / Safety Notes:</strong>
+  <span style="color: #9a3412;">{{ patient.allergy_safety_notes|default:"No safety information recorded" }}</span>
+</div>
+
+<h2>Doctor Consultations</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Date & Time</th>
+      <th>Diagnosis / Summary</th>
+      <th>Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for consultation in consultations %}
+      <tr>
+        <td><strong>{{ consultation.created_at|date:'Y-m-d H:i' }}</strong></td>
+        <td>{{ consultation.diagnosis|default:"Consultation encounter" }}</td>
+        <td><a href="{% url 'consultation_detail' consultation.pk %}" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8125rem;">View details</a></td>
+      </tr>
+    {% empty %}
+      <tr>
+        <td colspan="3" style="text-align: center; color: var(--color-text-muted); padding: 2rem;">No previous consultations recorded for this doctor.</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="action-links">
+  <a href="{% url 'patient_detail' patient.pk %}">&larr; Back to patient profile</a>
+</div>
+{% endblock %}

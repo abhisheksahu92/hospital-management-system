@@ -1,43 +1,58 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Sale {{ sale.number }} | Hospital Management System</title>
-  </head>
-  <body>
-    <main>
-      {% if messages %}<ul class="messages">{% for message in messages %}<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>{% endfor %}</ul>{% endif %}
-      <h1>Pharmacy sale {{ sale.number }}</h1>
-      <p>Status: {{ sale.get_status_display }}</p>
-      <p>Ledger invoice: {{ sale.invoice.number }} · {{ sale.invoice.total }}</p>
-      <table>
-        <thead><tr><th>Medicine</th><th>Batch</th><th>Quantity</th><th>Price</th><th>Line total</th><th>Return</th></tr></thead>
-        <tbody>
-          {% for line in lines %}
-            <tr>
-              <td>{{ line.batch.medicine.generic_name }} {{ line.batch.medicine.strength }}</td>
-              <td>{{ line.batch.batch_number }} (expires {{ line.batch.expiry_date }})</td>
-              <td>{{ line.quantity }}</td>
-              <td>{{ line.unit_price }}</td>
-              <td>{{ line.line_total }}</td>
-              <td>
-                {% if line.returnable_quantity > 0 %}
-                  <form method="post" action="{% url 'pharmacy_return_create' %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="sale_line" value="{{ line.pk }}">
-                    <input type="hidden" name="request_key" value="{{ line.request_key }}">
-                    <label>Quantity <input type="number" name="quantity" min="0.001" max="{{ line.returnable_quantity }}" step="0.001" required></label>
-                    <label>Reason <input name="reason" required></label>
-                    <button type="submit">Request return</button>
-                  </form>
-                {% else %}No returnable quantity{% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      <p><a href="{% url 'pharmacy_prescription_list' %}">Back to pharmacy</a></p>
-    </main>
-  </body>
-</html>
+{% extends "core/base.html" %}
+
+{% block title %}Sale {{ sale.number }} | {{ hospital.name|default:"Hospital Management System" }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Pharmacy Sale {{ sale.number }}</h1>
+    <p style="color: var(--color-text-muted); font-size: 0.9375rem;">
+      Ledger Invoice: <a href="{% url 'invoice_detail' sale.invoice.pk %}"><strong>{{ sale.invoice.number }}</strong></a> · Total: <strong>{{ sale.invoice.total }}</strong>
+    </p>
+  </div>
+  <span class="badge">{{ sale.get_status_display }}</span>
+</div>
+
+<h2>Sale Items</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Medicine</th>
+      <th>Batch (Expiry)</th>
+      <th>Quantity</th>
+      <th>Unit Price</th>
+      <th>Line Total</th>
+      <th>Return Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for line in lines %}
+      <tr>
+        <td><strong>{{ line.batch.medicine.generic_name }} {{ line.batch.medicine.strength }}</strong></td>
+        <td>{{ line.batch.batch_number }} <span style="color: var(--color-text-muted); font-size: 0.8125rem;">(exp {{ line.batch.expiry_date }})</span></td>
+        <td>{{ line.quantity }}</td>
+        <td>{{ line.unit_price }}</td>
+        <td><strong>{{ line.line_total }}</strong></td>
+        <td>
+          {% if line.returnable_quantity > 0 %}
+            <form method="post" action="{% url 'pharmacy_return_create' %}" style="display: flex; gap: 0.375rem; align-items: center; flex-wrap: wrap;">
+              {% csrf_token %}
+              <input type="hidden" name="sale_line" value="{{ line.pk }}">
+              <input type="hidden" name="request_key" value="{{ line.request_key }}">
+              <input type="number" name="quantity" min="0.001" max="{{ line.returnable_quantity }}" step="0.001" placeholder="Qty" required style="width: 70px; padding: 0.25rem 0.5rem; font-size: 0.8125rem;">
+              <input name="reason" placeholder="Return reason" required style="width: 110px; padding: 0.25rem 0.5rem; font-size: 0.8125rem;">
+              <button type="submit" class="btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8125rem;">Request return</button>
+            </form>
+          {% else %}
+            <span style="color: var(--color-text-muted); font-size: 0.8125rem;">No returnable qty</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="action-links">
+  <a href="{% url 'pharmacy_prescription_list' %}">&larr; Back to pharmacy</a>
+</div>
+{% endblock %}

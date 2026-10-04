@@ -1,25 +1,35 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Consultation | Hospital Management System</title>
-  </head>
-  <body>
-    <main>
-      <h1>Consultation</h1>
-      <p>{{ appointment.patient.mrn }} — {{ appointment.patient.full_name }}</p>
-      <p>Allergy/safety information: {{ appointment.patient.allergy_safety_notes|default:"No safety information recorded" }}</p>
-      <form method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <fieldset>
-          <legend>Prescription items (optional)</legend>
-          {{ item_formset.management_form }}
-          {{ item_formset.as_p }}
-        </fieldset>
-        <button type="submit">Save consultation</button>
-      </form>
-    </main>
-  </body>
-</html>
+{% extends "core/base.html" %}
+
+{% block title %}Consultation | {{ hospital.name|default:"Hospital Management System" }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Consultation</h1>
+    <p style="color: var(--color-text-muted); font-size: 0.9375rem;">
+      Patient: <strong>{{ appointment.patient.mrn }} — {{ appointment.patient.full_name }}</strong>
+    </p>
+  </div>
+</div>
+
+<div class="alert-warning-box" style="background-color: #fff7ed; border-color: #fed7aa;">
+  <strong style="color: #c2410c;">Allergy / Safety Notes:</strong>
+  <span style="color: #9a3412;">{{ appointment.patient.allergy_safety_notes|default:"No safety information recorded" }}</span>
+</div>
+
+<div class="card-panel">
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <fieldset>
+      <legend>Prescription items (optional)</legend>
+      {{ item_formset.management_form }}
+      {{ item_formset.as_p }}
+    </fieldset>
+    <div class="action-links" style="margin-top: 1.5rem;">
+      <button type="submit">Save consultation</button>
+      <a href="{% url 'appointment_list' %}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

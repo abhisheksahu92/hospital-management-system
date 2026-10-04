@@ -1,0 +1,45 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{{ hospital.name|default:"Hospital Management System" }}{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'core/style.css' %}">
+    {% block extra_head %}{% endblock %}
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand-title">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-primary);"><path d="M12 6v12M6 12h12"/><rect width="20" height="20" x="2" y="2" rx="4"/></svg>
+        <span>{{ hospital.name|default:"Hospital Management System" }}</span>
+      </div>
+      {% if user.is_authenticated %}
+        <nav class="user-nav">
+          {% if perms.core.view_patient %}<a href="{% url 'patient_list' %}">Patients</a>{% endif %}
+          {% if perms.core.view_appointment %}<a href="{% url 'appointment_list' %}">Appointments</a>{% endif %}
+          {% if perms.core.view_invoice %}<a href="{% url 'invoice_list' %}">Invoices</a>{% endif %}
+          {% if is_pharmacy %}<a href="{% url 'pharmacy_prescription_list' %}">Pharmacy</a>{% endif %}
+          <span style="color: var(--color-text-muted);">&bull;</span>
+          <span><strong>{{ user.get_username }}</strong></span>
+          <form method="post" action="{% url 'logout' %}" style="display: inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn" style="padding: 0.375rem 0.75rem; font-size: 0.8125rem; background: #e2e8f0; color: #334155;">Sign out</button>
+          </form>
+        </nav>
+      {% endif %}
+    </header>
+
+    <main>
+      {% if messages %}
+        <ul class="messages">
+          {% for message in messages %}
+            <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

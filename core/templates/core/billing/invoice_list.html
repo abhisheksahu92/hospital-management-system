@@ -1,33 +1,60 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Invoices | Hospital Management System</title>
-  </head>
-  <body>
-    <main>
-      <h1>Invoices</h1>
-      <form method="get" role="search">
-        <label for="invoice-query">Search invoice, patient ID, or name</label>
-        <input id="invoice-query" type="search" name="q" value="{{ query }}">
-        <button type="submit">Search</button>
-      </form>
-      <table>
-        <thead><tr><th>Invoice</th><th>Patient</th><th>Status</th><th>Total</th><th>Balance</th></tr></thead>
-        <tbody>
-          {% for invoice in invoices %}
-            <tr>
-              <td><a href="{% url 'invoice_detail' invoice.pk %}">{{ invoice.number }}</a></td>
-              <td>{% if invoice.patient %}{{ invoice.patient.mrn }} — {{ invoice.patient.full_name }}{% else %}Walk-in{% endif %}</td>
-              <td>{{ invoice.get_status_display }}</td>
-              <td>{{ invoice.total }}</td>
-              <td>{{ invoice.balance }}</td>
-            </tr>
-          {% empty %}<tr><td colspan="5">No invoices found.</td></tr>{% endfor %}
-        </tbody>
-      </table>
-      <p><a href="{% url 'home' %}">Back to home</a></p>
-    </main>
-  </body>
-</html>
+{% extends "core/base.html" %}
+
+{% block title %}Invoices | {{ hospital.name|default:"Hospital Management System" }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Invoices</h1>
+    <p style="color: var(--color-text-muted); font-size: 0.9375rem;">Manage hospital bills, payment receipts, and balance collections.</p>
+  </div>
+</div>
+
+<form method="get" role="search" class="toolbar-form">
+  <label for="invoice-query">
+    <span style="white-space: nowrap;">Search invoices:</span>
+    <input id="invoice-query" type="search" name="q" value="{{ query }}" placeholder="Search by invoice number, patient ID, or name...">
+  </label>
+  <button type="submit">Search</button>
+  {% if query %}
+    <a href="{% url 'invoice_list' %}" class="btn btn-secondary">Clear</a>
+  {% endif %}
+</form>
+
+<table>
+  <thead>
+    <tr>
+      <th>Invoice #</th>
+      <th>Patient</th>
+      <th>Status</th>
+      <th>Total</th>
+      <th>Balance</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for invoice in invoices %}
+      <tr>
+        <td><strong><a href="{% url 'invoice_detail' invoice.pk %}">{{ invoice.number }}</a></strong></td>
+        <td>{% if invoice.patient %}{{ invoice.patient.mrn }} — {{ invoice.patient.full_name }}{% else %}<span style="color: var(--color-text-muted);">Walk-in</span>{% endif %}</td>
+        <td><span class="badge">{{ invoice.get_status_display }}</span></td>
+        <td>{{ invoice.total }}</td>
+        <td>
+          {% if invoice.balance > 0 %}
+            <strong style="color: var(--color-danger);">{{ invoice.balance }}</strong>
+          {% else %}
+            <span style="color: var(--color-success);">0.00</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% empty %}
+      <tr>
+        <td colspan="5" style="text-align: center; color: var(--color-text-muted); padding: 2rem;">No invoices found.</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="action-links">
+  <a href="{% url 'home' %}">&larr; Back to dashboard</a>
+</div>
+{% endblock %}

@@ -1,40 +1,79 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ patient.mrn }} | Hospital Management System</title>
-  </head>
-  <body>
-    <main>
-      {% if messages %}<ul class="messages">{% for message in messages %}<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>{% endfor %}</ul>{% endif %}
-      <h1>{{ patient.full_name }}</h1>
-      <dl>
-        <dt>Patient ID</dt><dd>{{ patient.mrn }}</dd>
-        <dt>Date of birth</dt><dd>{{ patient.date_of_birth|default:"Not recorded" }}</dd>
-        <dt>Phone</dt><dd>{{ patient.phone|default:"Not recorded" }}</dd>
-        <dt>Address</dt><dd>{{ patient.address|default:"Not recorded" }}</dd>
-        <dt>Emergency contact</dt><dd>{{ patient.emergency_contact_name|default:"Not recorded" }} {{ patient.emergency_contact_phone }}</dd>
-      </dl>
-      {% if can_edit %}<p><a href="{% url 'patient_update' patient.pk %}">Update demographics</a></p>{% endif %}
-      {% if can_view_clinical %}<p><a href="{% url 'clinical_history' patient.pk %}">Clinical history</a></p>{% endif %}
-      {% if can_bill %}
-        <h2>Invoices</h2>
-        <ul>
-          {% for invoice in invoices %}
-            <li><a href="{% url 'invoice_detail' invoice.pk %}">{{ invoice.number }}: {{ invoice.get_status_display }} - {{ invoice.total }}</a></li>
-          {% empty %}<li>No invoices recorded.</li>{% endfor %}
-        </ul>
-        <form method="post" action="{% url 'invoice_create' %}">
-          {% csrf_token %}
-          <input type="hidden" name="patient" value="{{ patient.pk }}">
-          <label>Service <select name="service" required>{% for service in services %}<option value="{{ service.pk }}">{{ service.name }} - {{ service.current_charge|default:"0.00" }}</option>{% endfor %}</select></label>
-          <label>Quantity <input type="number" name="quantity" min="0.001" step="0.001" value="1" required></label>
-          <label>Unit price <input type="number" name="unit_price" min="0" step="0.01" required></label>
-          <button type="submit">Create invoice</button>
-        </form>
-      {% endif %}
-      <p><a href="{% url 'patient_list' %}">Back to patients</a></p>
-    </main>
-  </body>
-</html>
+{% extends "core/base.html" %}
+
+{% block title %}{{ patient.mrn }} | {{ hospital.name|default:"Hospital Management System" }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ patient.full_name }}</h1>
+    <span class="badge badge-info">ID: {{ patient.mrn }}</span>
+  </div>
+  <div class="action-links" style="margin: 0;">
+    {% if can_edit %}<a href="{% url 'patient_update' patient.pk %}" class="btn">Update demographics</a>{% endif %}
+    {% if can_view_clinical %}<a href="{% url 'clinical_history' patient.pk %}" class="btn btn-secondary">Clinical history</a>{% endif %}
+  </div>
+</div>
+
+<dl class="details-grid">
+  <dt>Patient ID</dt><dd><strong>{{ patient.mrn }}</strong></dd>
+  <dt>Date of birth</dt><dd>{{ patient.date_of_birth|default:"Not recorded" }}</dd>
+  <dt>Phone</dt><dd>{{ patient.phone|default:"Not recorded" }}</dd>
+  <dt>Address</dt><dd>{{ patient.address|default:"Not recorded" }}</dd>
+  <dt>Emergency contact</dt><dd>{{ patient.emergency_contact_name|default:"Not recorded" }} {{ patient.emergency_contact_phone }}</dd>
+</dl>
+
+{% if can_bill %}
+  <h2>Invoices & Billing</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Invoice Number</th>
+        <th>Status</th>
+        <th>Total Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for invoice in invoices %}
+        <tr>
+          <td><a href="{% url 'invoice_detail' invoice.pk %}"><strong>{{ invoice.number }}</strong></a></td>
+          <td><span class="badge">{{ invoice.get_status_display }}</span></td>
+          <td>{{ invoice.total }}</td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="3" style="text-align: center; color: var(--color-text-muted);">No invoices recorded.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="card-panel">
+    <h3>Create New Invoice</h3>
+    <form method="post" action="{% url 'invoice_create' %}">
+      {% csrf_token %}
+      <input type="hidden" name="patient" value="{{ patient.pk }}">
+      <p>
+        <label for="id_service">Service</label>
+        <select id="id_service" name="service" required>
+          {% for service in services %}
+            <option value="{{ service.pk }}">{{ service.name }} - {{ service.current_charge|default:"0.00" }}</option>
+          {% endfor %}
+        </select>
+      </p>
+      <p>
+        <label for="id_quantity">Quantity</label>
+        <input id="id_quantity" type="number" name="quantity" min="0.001" step="0.001" value="1" required>
+      </p>
+      <p>
+        <label for="id_unit_price">Unit price</label>
+        <input id="id_unit_price" type="number" name="unit_price" min="0" step="0.01" required>
+      </p>
+      <button type="submit">Create invoice</button>
+    </form>
+  </div>
+{% endif %}
+
+<div class="action-links">
+  <a href="{% url 'patient_list' %}">&larr; Back to patients</a>
+</div>
+{% endblock %}

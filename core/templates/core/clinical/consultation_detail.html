@@ -1,33 +1,50 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Consultation | Hospital Management System</title>
-  </head>
-  <body>
-    <main>
-      {% if messages %}<ul class="messages">{% for message in messages %}<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>{% endfor %}</ul>{% endif %}
-      <h1>Consultation</h1>
-      <p>{{ consultation.patient.mrn }} — {{ consultation.patient.full_name }}</p>
-      <p>Doctor: {{ consultation.doctor.user.get_full_name|default:consultation.doctor.user.username }}</p>
-      <p>Allergy/safety information: {{ consultation.patient.allergy_safety_notes|default:"No safety information recorded" }}</p>
-      <h2>Clinical notes</h2>
-      <p>{{ consultation.clinical_notes|linebreaksbr }}</p>
-      <h2>Diagnosis</h2>
-      <p>{{ consultation.diagnosis|linebreaksbr }}</p>
-      <h2>Follow-up</h2>
-      <p>{{ consultation.follow_up_date|default:"No date set" }}</p>
-      <p>{{ consultation.follow_up_note|linebreaksbr|default:"No follow-up note" }}</p>
-      <h2>Prescriptions</h2>
-      <ul>
-        {% for prescription in prescriptions %}
-          <li><a href="{% url 'prescription_print' prescription.pk %}">{{ prescription.number }} — {{ prescription.get_status_display }}</a></li>
-        {% empty %}
-          <li>No prescription issued.</li>
-        {% endfor %}
-      </ul>
-      <p><a href="{% url 'clinical_history' consultation.patient.pk %}">Back to clinical history</a></p>
-    </main>
-  </body>
-</html>
+{% extends "core/base.html" %}
+
+{% block title %}Consultation | {{ hospital.name|default:"Hospital Management System" }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Consultation Details</h1>
+    <p style="color: var(--color-text-muted); font-size: 0.9375rem;">
+      Patient: <strong>{{ consultation.patient.mrn }} — {{ consultation.patient.full_name }}</strong>
+    </p>
+  </div>
+  <span class="badge badge-info">Dr. {{ consultation.doctor.user.get_full_name|default:consultation.doctor.user.username }}</span>
+</div>
+
+<div class="alert-warning-box" style="background-color: #fff7ed; border-color: #fed7aa;">
+  <strong style="color: #c2410c;">Allergy / Safety Notes:</strong>
+  <span style="color: #9a3412;">{{ consultation.patient.allergy_safety_notes|default:"No safety information recorded" }}</span>
+</div>
+
+<div class="card-panel">
+  <h2>Clinical notes</h2>
+  <p style="margin-bottom: 1.25rem;">{{ consultation.clinical_notes|linebreaksbr }}</p>
+
+  <h2>Diagnosis</h2>
+  <p style="margin-bottom: 1.25rem;">{{ consultation.diagnosis|linebreaksbr }}</p>
+
+  <h2>Follow-up</h2>
+  <p><strong>Follow-up date:</strong> {{ consultation.follow_up_date|default:"No date set" }}</p>
+  <p>{{ consultation.follow_up_note|linebreaksbr|default:"No follow-up note recorded." }}</p>
+</div>
+
+<h2>Issued Prescriptions</h2>
+<div class="card-panel">
+  <ul style="list-style: none;">
+    {% for prescription in prescriptions %}
+      <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
+        <span><strong>{{ prescription.number }}</strong> — <span class="badge">{{ prescription.get_status_display }}</span></span>
+        <a href="{% url 'prescription_print' prescription.pk %}" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8125rem;">View & Print</a>
+      </li>
+    {% empty %}
+      <li style="color: var(--color-text-muted);">No prescription issued during this consultation.</li>
+    {% endfor %}
+  </ul>
+</div>
+
+<div class="action-links">
+  <a href="{% url 'clinical_history' consultation.patient.pk %}">&larr; Back to clinical history</a>
+</div>
+{% endblock %}
