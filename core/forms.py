@@ -40,6 +40,22 @@ class PatientForm(forms.ModelForm):
         label="Age (Years)",
         widget=forms.NumberInput(attrs={"placeholder": "e.g. 35", "min": "0", "max": "130"}),
     )
+    date_of_birth = forms.DateField(
+        required=False,
+        input_formats=["%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"],
+        label="Date of Birth",
+        widget=forms.DateInput(
+            format="%d/%m/%Y",
+            attrs={
+                "type": "text",
+                "placeholder": "DD/MM/YYYY",
+                "pattern": r"\d{2}/\d{2}/\d{4}",
+                "maxlength": "10",
+                "autocomplete": "off",
+                "inputmode": "numeric",
+            },
+        ),
+    )
 
     class Meta:
         model = Patient
@@ -53,9 +69,9 @@ class PatientForm(forms.ModelForm):
             "emergency_contact_phone",
         )
         widgets = {
-            "date_of_birth": forms.DateInput(attrs={"type": "date"}),
             "email": forms.EmailInput(attrs={"placeholder": "patient@example.com"}),
         }
+
 
     def clean_date_of_birth(self):
         date_of_birth = self.cleaned_data.get("date_of_birth")

@@ -1370,7 +1370,7 @@ class PatientWorkflowTests(TestCase):
             reverse("patient_create"),
             {
                 "full_name": "Synthetic Patient One",
-                "date_of_birth": "1990-01-02",
+                "date_of_birth": "02/01/1990",
                 "phone": "5550100",
                 "email": "synthetic.patient@example.test",
                 "address": "Synthetic Address",
@@ -1466,7 +1466,7 @@ class PatientWorkflowTests(TestCase):
         form = PatientForm(
             data={
                 "full_name": "Synthetic Patient",
-                "date_of_birth": "2999-01-01",
+                "date_of_birth": "01/01/2999",
                 "phone": "",
                 "address": "",
                 "emergency_contact_name": "",
