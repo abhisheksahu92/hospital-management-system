@@ -1,22 +1,66 @@
 {% extends "core/base.html" %}
 
-{% block title %}{% if creating %}Book appointment{% else %}Reschedule appointment{% endif %} | {{ hospital.name|default:"Hospital Management System" }}{% endblock %}
+{% block title %}{% if creating %}Book appointment{% else %}Reschedule appointment{% endif %} | {{ hospital.name|default:"Vedant Hospital" }}{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <div>
-    <h1>{% if creating %}Book appointment{% else %}Reschedule appointment{% endif %}</h1>
-    <p style="color: var(--color-text-muted); font-size: 0.9375rem;">{% if creating %}Schedule a patient visit with an attending physician.{% else %}Update scheduled appointment time.{% endif %}</p>
+<div class="intake-breadcrumb-bar">
+  <div class="breadcrumb-nav">
+    <a href="{% url 'appointment_list' %}">&larr; Appointments Directory</a>
+    <span class="crumb-separator">/</span>
+    <span class="crumb-current">{% if creating %}Book Clinic Appointment{% else %}Reschedule Appointment{% endif %}</span>
+  </div>
+  <div class="intake-badges-group">
+    <span class="badge badge-info">Outpatient Clinic</span>
+    <span class="badge badge-success">Schedule Desk</span>
   </div>
 </div>
 
-<div class="card-panel">
-  <form method="post">
+<div class="intake-main-card" style="max-width: 680px; margin: 0 auto;">
+  <div class="form-hero-header">
+    <div>
+      <div class="form-id-tag">CLINIC SCHEDULING &bull; OPD DESK</div>
+      <h1 class="form-main-heading">{% if creating %}Book appointment{% else %}Reschedule appointment{% endif %}</h1>
+      <p class="form-main-sub">
+        {% if creating %}Schedule a verified patient consultation visit with an attending physician.{% else %}Update scheduled appointment consultation slot.{% endif %}
+      </p>
+    </div>
+  </div>
+
+  <form method="post" novalidate>
     {% csrf_token %}
-    {{ form.as_p }}
-    <div class="action-links" style="margin-top: 1.5rem;">
-      <button type="submit">{% if creating %}Book appointment{% else %}Save schedule{% endif %}</button>
-      <a href="{% url 'appointment_list' %}" class="btn btn-secondary">Cancel</a>
+
+    {% if form.non_field_errors %}
+      <div class="stitch-error-banner" role="alert">
+        {% for error in form.non_field_errors %}
+          <p>{{ error }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+      {% for field in form %}
+        <div>
+          <label for="{{ field.id_for_label }}" class="field-label" style="display: block; margin-bottom: 0.35rem;">
+            {{ field.label }} {% if field.field.required %}<span class="required-star">*</span>{% endif %}
+          </label>
+          <div class="field-input-box">
+            {{ field }}
+          </div>
+          {% if field.errors %}
+            <div class="field-err-msg">{{ field.errors.0 }}</div>
+          {% elif field.help_text %}
+            <span class="field-hint">{{ field.help_text }}</span>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="intake-actions-toolbar" style="margin-top: 2rem;">
+      <a href="{% url 'appointment_list' %}" class="btn-stitch-secondary">Cancel</a>
+      <button type="submit" class="btn-stitch-primary" style="padding: 0.75rem 2rem;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+        {% if creating %}Book appointment{% else %}Save schedule{% endif %}
+      </button>
     </div>
   </form>
 </div>

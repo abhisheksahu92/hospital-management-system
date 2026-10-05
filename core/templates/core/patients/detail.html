@@ -1,79 +1,192 @@
 {% extends "core/base.html" %}
 
-{% block title %}{{ patient.mrn }} | {{ hospital.name|default:"Hospital Management System" }}{% endblock %}
+{% block title %}{{ patient.mrn }} | {{ hospital.name|default:"Vedant Hospital" }}{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <div>
-    <h1>{{ patient.full_name }}</h1>
-    <span class="badge badge-info">ID: {{ patient.mrn }}</span>
+<!-- Top Clinical Context & Breadcrumb Bar -->
+<div class="intake-breadcrumb-bar">
+  <div class="breadcrumb-nav">
+    <a href="{% url 'patient_list' %}">&larr; Patient Directory</a>
+    <span class="crumb-separator">/</span>
+    <span class="crumb-current">{{ patient.full_name }} ({{ patient.mrn }})</span>
   </div>
-  <div class="action-links" style="margin: 0;">
-    {% if can_edit %}<a href="{% url 'patient_update' patient.pk %}" class="btn">Update demographics</a>{% endif %}
-    {% if can_view_clinical %}<a href="{% url 'clinical_history' patient.pk %}" class="btn btn-secondary">Clinical history</a>{% endif %}
+  <div class="intake-badges-group">
+    <span class="badge badge-info">MRN: {{ patient.mrn }}</span>
+    <span class="badge badge-success">Active Patient Chart</span>
   </div>
 </div>
 
-<dl class="details-grid">
-  <dt>Patient ID</dt><dd><strong>{{ patient.mrn }}</strong></dd>
-  <dt>Date of birth</dt><dd>{{ patient.date_of_birth|default:"Not recorded" }}</dd>
-  <dt>Phone</dt><dd>{{ patient.phone|default:"Not recorded" }}</dd>
-  <dt>Address</dt><dd>{{ patient.address|default:"Not recorded" }}</dd>
-  <dt>Emergency contact</dt><dd>{{ patient.emergency_contact_name|default:"Not recorded" }} {{ patient.emergency_contact_phone }}</dd>
-</dl>
-
-{% if can_bill %}
-  <h2>Invoices & Billing</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Invoice Number</th>
-        <th>Status</th>
-        <th>Total Amount</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for invoice in invoices %}
-        <tr>
-          <td><a href="{% url 'invoice_detail' invoice.pk %}"><strong>{{ invoice.number }}</strong></a></td>
-          <td><span class="badge">{{ invoice.get_status_display }}</span></td>
-          <td>{{ invoice.total }}</td>
-        </tr>
-      {% empty %}
-        <tr>
-          <td colspan="3" style="text-align: center; color: var(--color-text-muted);">No invoices recorded.</td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  <div class="card-panel">
-    <h3>Create New Invoice</h3>
-    <form method="post" action="{% url 'invoice_create' %}">
-      {% csrf_token %}
-      <input type="hidden" name="patient" value="{{ patient.pk }}">
-      <p>
-        <label for="id_service">Service</label>
-        <select id="id_service" name="service" required>
-          {% for service in services %}
-            <option value="{{ service.pk }}">{{ service.name }} - {{ service.current_charge|default:"0.00" }}</option>
-          {% endfor %}
-        </select>
-      </p>
-      <p>
-        <label for="id_quantity">Quantity</label>
-        <input id="id_quantity" type="number" name="quantity" min="0.001" step="0.001" value="1" required>
-      </p>
-      <p>
-        <label for="id_unit_price">Unit price</label>
-        <input id="id_unit_price" type="number" name="unit_price" min="0" step="0.01" required>
-      </p>
-      <button type="submit">Create invoice</button>
-    </form>
+<!-- Patient Header Card -->
+<div class="hero-context-panel" style="margin-bottom: 1.5rem;">
+  <div style="display: flex; align-items: center; gap: 1.25rem;">
+    <div style="width: 56px; height: 56px; border-radius: var(--radius-xl); background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 800; box-shadow: var(--shadow-sm);">
+      {{ patient.full_name|slice:":1"|upper }}
+    </div>
+    <div>
+      <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <h1 style="font-size: 1.75rem; font-weight: 800; color: var(--color-secondary); margin: 0;">{{ patient.full_name }}</h1>
+        <span class="badge badge-info" style="font-size: 0.75rem;">ID: {{ patient.mrn }}</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 1rem; color: var(--color-text-muted); font-size: 0.875rem; margin-top: 0.25rem;">
+        <span>DOB: <strong>{{ patient.date_of_birth|default:"Not recorded" }}</strong></span>
+        <span>&bull;</span>
+        <span>Phone: <strong>{{ patient.phone|default:"Not recorded" }}</strong></span>
+        <span>&bull;</span>
+        <span>Status: <strong style="color: var(--color-success);">Outpatient Registered</strong></span>
+      </div>
+    </div>
   </div>
+
+  <div class="hero-actions">
+    {% if can_edit %}
+      <a href="{% url 'patient_update' patient.pk %}" class="btn-stitch-secondary">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        Update demographics
+      </a>
+    {% endif %}
+    {% if can_view_clinical %}
+      <a href="{% url 'clinical_history' patient.pk %}" class="btn-stitch-primary">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        Clinical history &rarr;
+      </a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Two-Column Patient Detail Overview -->
+<div class="workspace-split" style="margin-bottom: 2rem;">
+  
+  <!-- Left Column: Master Demographic Data -->
+  <div class="stitch-panel">
+    <div class="stitch-panel-header">
+      <h2 style="font-size: 1.15rem; font-weight: 700;">Demographic Information</h2>
+      <span class="badge badge-info">Verified Record</span>
+    </div>
+    
+    <dl class="details-grid" style="box-shadow: none; border: none; padding: 0.5rem 0; margin: 0;">
+      <dt>Patient ID</dt><dd><strong>{{ patient.mrn }}</strong></dd>
+      <dt>Full Name</dt><dd>{{ patient.full_name }}</dd>
+      <dt>Date of birth</dt><dd>{{ patient.date_of_birth|default:"Not recorded" }}</dd>
+      <dt>Phone number</dt><dd>{{ patient.phone|default:"Not recorded" }}</dd>
+      <dt>Address</dt><dd>{{ patient.address|default:"Not recorded" }}</dd>
+      <dt>Emergency contact</dt>
+      <dd>
+        {% if patient.emergency_contact_name %}
+          <strong>{{ patient.emergency_contact_name }}</strong> {% if patient.emergency_contact_phone %}({{ patient.emergency_contact_phone }}){% endif %}
+        {% else %}
+          <span style="color: var(--color-text-muted);">Not recorded</span>
+        {% endif %}
+      </dd>
+    </dl>
+  </div>
+
+  <!-- Right Column: Clinical Safety & Quick Intake Summary -->
+  <div>
+    {% if can_view_clinical and patient.allergy_safety_notes %}
+      <div class="safety-alert-card" style="margin-bottom: 1.25rem;">
+        <div class="safety-header">
+          <span class="safety-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+            Clinical Safety &amp; Allergy Notes
+          </span>
+          <span class="badge badge-danger">Medical Alert</span>
+        </div>
+        <p class="safety-body">
+          {{ patient.allergy_safety_notes }}
+        </p>
+      </div>
+    {% endif %}
+
+    <div class="stitch-panel">
+      <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 0.75rem;">Care Protocols</h3>
+      <p style="color: var(--color-text-muted); font-size: 0.8125rem; line-height: 1.5; margin-bottom: 1rem;">
+        Patient records are linked with hospital pharmacy dispensing, triage booking, and cashiers ledger.
+      </p>
+      {% if can_view_clinical %}
+        <a href="{% url 'clinical_history' patient.pk %}" class="quick-action-item">
+          <div class="action-item-left">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span>Consultation Encounters &amp; e-Rx</span>
+          </div>
+          <span>&rarr;</span>
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<!-- Invoices & Financial Ledger -->
+{% if can_bill %}
+  <section aria-labelledby="invoices-heading" style="margin-bottom: 2rem;">
+    <div class="page-header" style="margin-bottom: 1rem;">
+      <h2 id="invoices-heading" style="font-size: 1.35rem; font-weight: 800; color: var(--color-secondary);">Invoices &amp; Billing</h2>
+      <span class="badge badge-info">{{ invoices|length }} Invoices</span>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Invoice Number</th>
+          <th>Status</th>
+          <th>Total Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for invoice in invoices %}
+          <tr>
+            <td><a href="{% url 'invoice_detail' invoice.pk %}"><strong>{{ invoice.number }}</strong></a></td>
+            <td><span class="badge">{{ invoice.get_status_display }}</span></td>
+            <td><strong>{{ invoice.total }}</strong></td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="3" style="text-align: center; color: var(--color-text-muted); padding: 2rem;">No invoices recorded for this patient.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Create New Invoice Card -->
+    <div class="stitch-panel" style="margin-top: 1.5rem;">
+      <div class="stitch-panel-header">
+        <h3 style="font-size: 1.05rem; font-weight: 700;">Create New Patient Invoice</h3>
+        <span class="badge badge-success">Cashier Desks</span>
+      </div>
+      <form method="post" action="{% url 'invoice_create' %}" style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 1rem; align-items: flex-end; margin-top: 1rem;">
+        {% csrf_token %}
+        <input type="hidden" name="patient" value="{{ patient.pk }}">
+        
+        <div>
+          <label for="id_service" style="display: block; font-size: 0.8125rem; font-weight: 700; color: var(--color-secondary); margin-bottom: 0.35rem;">Clinical Service / Charge</label>
+          <select id="id_service" name="service" required class="clinical-input">
+            {% for service in services %}
+              <option value="{{ service.pk }}">{{ service.name }} &mdash; {{ service.current_charge|default:"0.00" }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label for="id_quantity" style="display: block; font-size: 0.8125rem; font-weight: 700; color: var(--color-secondary); margin-bottom: 0.35rem;">Quantity</label>
+          <input id="id_quantity" type="number" name="quantity" min="0.001" step="0.001" value="1" required class="clinical-input">
+        </div>
+
+        <div>
+          <label for="id_unit_price" style="display: block; font-size: 0.8125rem; font-weight: 700; color: var(--color-secondary); margin-bottom: 0.35rem;">Unit Price</label>
+          <input id="id_unit_price" type="number" name="unit_price" min="0" step="0.01" required placeholder="0.00" class="clinical-input">
+        </div>
+
+        <div>
+          <button type="submit" class="btn-stitch-primary" style="height: 44px; padding: 0 1.5rem;">
+            Create invoice
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
 {% endif %}
 
 <div class="action-links">
-  <a href="{% url 'patient_list' %}">&larr; Back to patients</a>
+  <a href="{% url 'patient_list' %}">&larr; Back to patients directory</a>
 </div>
 {% endblock %}

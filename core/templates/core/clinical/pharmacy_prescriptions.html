@@ -1,182 +1,224 @@
 {% extends "core/base.html" %}
 
-{% block title %}Dispensing prescriptions | {{ hospital.name|default:"Hospital Management System" }}{% endblock %}
+{% block title %}Dispensing prescriptions | {{ hospital.name|default:"Vedant Hospital" }}{% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h1>Pharmacy Dispensing</h1>
-    <p style="color: var(--color-text-muted); font-size: 0.9375rem;">Dispense prescriptions, record OTC sales, and manage FEFO inventory batches.</p>
+    <h1>Pharmacy Dispensing &amp; FEFO Inventory</h1>
+    <p style="color: var(--color-text-muted); font-size: 0.9375rem;">Dispense active physician e-Rx orders, process OTC counter sales, and track batch expiries.</p>
+  </div>
+  <div class="intake-badges-group">
+    <span class="badge badge-success">Pharmacy Desk: Active</span>
+    <span class="badge badge-info">FEFO Protocol Active</span>
   </div>
 </div>
 
-<form method="get" role="search" class="toolbar-form">
+<!-- Search Prescription Toolbar -->
+<form method="get" role="search" class="toolbar-form" style="margin-bottom: 2rem;">
   <label for="prescription-query">
-    <span style="white-space: nowrap;">Search prescriptions:</span>
-    <input id="prescription-query" type="search" name="q" value="{{ query }}" placeholder="Search prescription ID, patient ID, or name...">
+    <span style="white-space: nowrap; font-weight: 700; color: var(--color-secondary);">Search prescriptions:</span>
+    <input id="prescription-query" type="search" name="q" value="{{ query }}" placeholder="Search prescription ID, patient ID, or name..." class="clinical-input">
   </label>
-  <button type="submit">Search</button>
+  <button type="submit" class="btn-stitch-primary" style="height: 44px;">Search</button>
   {% if query %}
-    <a href="{% url 'pharmacy_prescription_list' %}" class="btn btn-secondary">Clear</a>
+    <a href="{% url 'pharmacy_prescription_list' %}" class="btn-stitch-secondary" style="height: 44px;">Clear</a>
   {% endif %}
 </form>
 
-<h2>Issued Prescriptions</h2>
-<table>
-  <thead>
-    <tr>
-      <th>Prescription</th>
-      <th>Patient</th>
-      <th>Safety information</th>
-      <th>Medicines & Batches (FEFO)</th>
-      <th>Print</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for prescription in prescriptions %}
+<!-- Section 1: Issued Prescriptions Queue -->
+<section style="margin-bottom: 2.5rem;">
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+    <h2 style="font-size: 1.25rem; font-weight: 800; color: var(--color-secondary); margin: 0;">Issued Prescriptions</h2>
+    <span class="badge badge-info">{{ prescriptions|length }} Active e-Rx</span>
+  </div>
+
+  <table>
+    <thead>
       <tr>
-        <td><strong>{{ prescription.number }}</strong></td>
-        <td>{{ prescription.patient.mrn }} — {{ prescription.patient.full_name }}</td>
-        <td>
-          {% if prescription.patient.allergy_safety_notes %}
-            <span class="badge badge-warning">{{ prescription.patient.allergy_safety_notes }}</span>
-          {% else %}
-            <span style="color: var(--color-text-muted);">None</span>
-          {% endif %}
-        </td>
-        <td>
-          <ul style="list-style: none;">
-            {% for item in prescription.items.all %}
-              <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--color-border);">
-                <div>
-                  <strong>{{ item.medicine.generic_name }} {{ item.medicine.strength }}</strong>
-                  <span style="color: var(--color-text-muted); font-size: 0.8125rem;">({{ item.dosage }} · {{ item.frequency }})</span> —
+        <th>Prescription</th>
+        <th>Patient</th>
+        <th>Safety Information</th>
+        <th>Medicines &amp; Batches (FEFO Dispense)</th>
+        <th>Print</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for prescription in prescriptions %}
+        <tr>
+          <td>
+            <strong style="color: var(--color-primary); font-size: 0.9375rem;">{{ prescription.number }}</strong>
+            <div style="font-size: 0.6875rem; color: var(--color-text-muted);">{{ prescription.issued_at|date:'M d, H:i' }}</div>
+          </td>
+          <td>
+            <a href="{% url 'patient_detail' prescription.patient.pk %}" style="font-weight: 700; color: var(--color-secondary); text-decoration: none;">
+              {{ prescription.patient.full_name }}
+            </a>
+            <div style="font-size: 0.75rem; color: var(--color-text-muted);">ID: {{ prescription.patient.mrn }}</div>
+          </td>
+          <td>
+            {% if prescription.patient.allergy_safety_notes %}
+              <span class="badge badge-danger">{{ prescription.patient.allergy_safety_notes }}</span>
+            {% else %}
+              <span style="color: var(--color-text-muted); font-size: 0.8125rem;">No known allergies</span>
+            {% endif %}
+          </td>
+          <td>
+            <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.75rem;">
+              {% for item in prescription.items.all %}
+                <li style="padding: 0.75rem; background: var(--color-surface-container); border: 1px solid var(--color-border); border-radius: var(--radius-md);">
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+                    <div>
+                      <strong style="color: var(--color-secondary);">{{ item.medicine.generic_name }} {{ item.medicine.strength }}</strong>
+                      <span style="color: var(--color-text-muted); font-size: 0.8125rem;">({{ item.dosage }} &bull; {{ item.frequency }} &bull; {{ item.duration }})</span>
+                    </div>
+                    {% if item.remaining_quantity > 0 %}
+                      <span class="badge badge-warning">{{ item.remaining_quantity }} remaining</span>
+                    {% else %}
+                      <span class="badge badge-success">Fully dispensed</span>
+                    {% endif %}
+                  </div>
+
                   {% if item.remaining_quantity > 0 %}
-                    <span class="badge badge-warning">{{ item.remaining_quantity }} remaining</span>
-                  {% else %}
-                    <span class="badge badge-success">Fully dispensed</span>
-                  {% endif %}
-                </div>
-                {% if item.remaining_quantity > 0 %}
-                  <form method="post" action="{% url 'dispense_prescription' prescription.pk %}" style="margin-top: 0.5rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                    {% csrf_token %}
-                    <input type="hidden" name="prescription_item" value="{{ item.pk }}">
-                    <input type="hidden" name="request_key" value="{{ item.request_key }}">
-                    <label style="font-size: 0.8125rem;">Batch
-                      <select name="batch" required style="width: auto;">
-                        {% for batch in item.available_batches %}
-                          <option value="{{ batch.pk }}"{% if forloop.first %} selected{% endif %}>{{ batch.batch_number }} — exp {{ batch.expiry_date }} ({{ batch.quantity_on_hand }} on hand){% if forloop.first %} [FEFO]{% endif %}</option>
-                        {% endfor %}
-                      </select>
-                    </label>
-                    <label style="font-size: 0.8125rem;">Qty
-                      <input type="number" name="quantity" min="0.001" max="{{ item.remaining_quantity }}" step="0.001" required style="width: 80px;">
-                    </label>
-                    <button type="submit" style="padding: 0.25rem 0.5rem; font-size: 0.8125rem;"{% if not item.available_batches %} disabled{% endif %}>Dispense</button>
-                  </form>
-                {% endif %}
-                {% for dispensing_line in item.dispensing_lines %}
-                  {% if dispensing_line.returnable_quantity > 0 %}
-                    <form method="post" action="{% url 'pharmacy_return_create' %}" style="margin-top: 0.375rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                    <form method="post" action="{% url 'dispense_prescription' prescription.pk %}" style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--color-border);">
                       {% csrf_token %}
-                      <input type="hidden" name="dispensing_line" value="{{ dispensing_line.pk }}">
-                      <input type="hidden" name="request_key" value="{{ dispensing_line.return_request_key }}">
-                      <label style="font-size: 0.8125rem;">Return qty
-                        <input type="number" name="quantity" min="0.001" max="{{ dispensing_line.returnable_quantity }}" step="0.001" required style="width: 70px;">
+                      <input type="hidden" name="prescription_item" value="{{ item.pk }}">
+                      <input type="hidden" name="request_key" value="{{ item.request_key }}">
+                      <label style="font-size: 0.75rem; font-weight: 700; color: var(--color-secondary);">FEFO Batch:
+                        <select name="batch" required class="clinical-input" style="width: auto; padding: 0.35rem 0.65rem !important;">
+                          {% for batch in item.available_batches %}
+                            <option value="{{ batch.pk }}"{% if forloop.first %} selected{% endif %}>{{ batch.batch_number }} &mdash; exp {{ batch.expiry_date }} ({{ batch.quantity_on_hand }} avail){% if forloop.first %} (FEFO){% endif %}</option>
+                          {% endfor %}
+                        </select>
                       </label>
-                      <label style="font-size: 0.8125rem;">Reason
-                        <input name="reason" required placeholder="Return reason" style="width: 140px;">
+                      <label style="font-size: 0.75rem; font-weight: 700; color: var(--color-secondary);">Qty:
+                        <input type="number" name="quantity" min="0.001" max="{{ item.remaining_quantity }}" step="0.001" required style="width: 80px; padding: 0.35rem 0.5rem !important;" class="clinical-input">
                       </label>
-                      <button type="submit" class="btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8125rem;">Request return</button>
+                      <button type="submit" class="btn-stitch-primary" style="padding: 0.35rem 0.85rem; font-size: 0.75rem; min-height: 32px;"{% if not item.available_batches %} disabled{% endif %}>Dispense</button>
                     </form>
                   {% endif %}
-                {% endfor %}
-              </li>
-            {% endfor %}
-          </ul>
-        </td>
-        <td><a href="{% url 'prescription_print' prescription.pk %}" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8125rem;">Print</a></td>
-      </tr>
-    {% empty %}
-      <tr><td colspan="5" style="text-align: center; color: var(--color-text-muted); padding: 2rem;">No issued prescriptions found.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
 
-<div class="card-panel">
-  <h2>Over-The-Counter (OTC) Direct Sale</h2>
-  <form method="post" action="{% url 'pharmacy_sale_create' %}">
-    {% csrf_token %}
-    <input type="hidden" name="request_key" value="{{ sale_request_key }}">
-    <p>
-      <label>Medicine Batch (FEFO Inventory)</label>
-      <select name="batch" required>
-        {% for batch in otc_batches %}
-          <option value="{{ batch.pk }}">{{ batch.medicine.generic_name }} {{ batch.medicine.strength }} — {{ batch.batch_number }} — expires {{ batch.expiry_date }} — {{ batch.quantity_on_hand }} available</option>
-        {% endfor %}
-      </select>
-    </p>
-    <p>
-      <label>Quantity</label>
-      <input type="number" name="quantity" min="0.001" step="0.001" required>
-    </p>
-    <button type="submit"{% if not otc_batches %} disabled{% endif %}>Create OTC sale</button>
-  </form>
-</div>
+                  {% for dispensing_line in item.dispensing_lines %}
+                    {% if dispensing_line.returnable_quantity > 0 %}
+                      <form method="post" action="{% url 'pharmacy_return_create' %}" style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.35rem;">
+                        {% csrf_token %}
+                        <input type="hidden" name="dispensing_line" value="{{ dispensing_line.pk }}">
+                        <input type="hidden" name="request_key" value="{{ dispensing_line.return_request_key }}">
+                        <label style="font-size: 0.75rem; color: var(--color-text-muted);">Return qty:
+                          <input type="number" name="quantity" min="0.001" max="{{ dispensing_line.returnable_quantity }}" step="0.001" required style="width: 65px; padding: 0.25rem 0.4rem !important;" class="clinical-input">
+                        </label>
+                        <input name="reason" required placeholder="Return reason" style="width: 140px; padding: 0.25rem 0.4rem !important;" class="clinical-input">
+                        <button type="submit" class="btn-stitch-secondary" style="padding: 0.25rem 0.65rem; font-size: 0.75rem; min-height: 28px;">Request return</button>
+                      </form>
+                    {% endif %}
+                  {% endfor %}
+                </li>
+              {% endfor %}
+            </ul>
+          </td>
+          <td>
+            <a href="{% url 'prescription_print' prescription.pk %}" class="btn-stitch-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.75rem; min-height: 32px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>
+              Print
+            </a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5" style="text-align: center; color: var(--color-text-muted); padding: 3rem;">No issued prescriptions found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
 
-<h2>Inventory Batches & Quality Controls</h2>
-<table>
-  <thead>
-    <tr>
-      <th>Medicine</th>
-      <th>Batch</th>
-      <th>Expiry</th>
-      <th>On Hand</th>
-      <th>Status</th>
-      <th>Adjustment</th>
-      <th>Quarantine Control</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for batch in stock_batches %}
+<!-- Section 2: Over-The-Counter (OTC) Direct Sale Card -->
+<section style="margin-bottom: 2.5rem;">
+  <div class="stitch-panel">
+    <div class="stitch-panel-header">
+      <h2 style="font-size: 1.15rem; font-weight: 700; margin: 0;">Over-The-Counter (OTC) Direct Sale</h2>
+      <span class="badge badge-success">Direct Walk-In Cashier</span>
+    </div>
+    <form method="post" action="{% url 'pharmacy_sale_create' %}" style="display: grid; grid-template-columns: 2fr 1fr auto; gap: 1rem; align-items: flex-end; margin-top: 1rem;">
+      {% csrf_token %}
+      <input type="hidden" name="request_key" value="{{ sale_request_key }}">
+      <div>
+        <label style="display: block; font-size: 0.8125rem; font-weight: 700; color: var(--color-secondary); margin-bottom: 0.35rem;">Medicine Batch (FEFO Inventory)</label>
+        <select name="batch" required class="clinical-input">
+          {% for batch in otc_batches %}
+            <option value="{{ batch.pk }}">{{ batch.medicine.generic_name }} {{ batch.medicine.strength }} &mdash; {{ batch.batch_number }} &mdash; exp {{ batch.expiry_date }} &mdash; ({{ batch.quantity_on_hand }} on hand)</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label style="display: block; font-size: 0.8125rem; font-weight: 700; color: var(--color-secondary); margin-bottom: 0.35rem;">Quantity</label>
+        <input type="number" name="quantity" min="0.001" step="0.001" required placeholder="1" class="clinical-input">
+      </div>
+      <button type="submit" class="btn-stitch-primary" style="height: 44px; padding: 0 1.5rem;"{% if not otc_batches %} disabled{% endif %}>
+        Create OTC sale
+      </button>
+    </form>
+  </div>
+</section>
+
+<!-- Section 3: Inventory Batches & Quality Controls -->
+<section style="margin-bottom: 2rem;">
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+    <h2 style="font-size: 1.25rem; font-weight: 800; color: var(--color-secondary); margin: 0;">Inventory Batches &amp; Quality Controls</h2>
+    <span class="badge badge-info">{{ stock_batches|length }} Registered Batches</span>
+  </div>
+
+  <table>
+    <thead>
       <tr>
-        <td><strong>{{ batch.medicine.generic_name }}</strong></td>
-        <td>{{ batch.batch_number }}</td>
-        <td>{{ batch.expiry_date }}</td>
-        <td>{{ batch.quantity_on_hand }}</td>
-        <td>
-          {% if batch.is_quarantined %}
-            <span class="badge badge-danger">Quarantined</span>
-          {% else %}
-            <span class="badge badge-success">Available</span>
-          {% endif %}
-        </td>
-        <td>
-          <form method="post" action="{% url 'stock_adjustment' batch.pk %}" style="display: flex; gap: 0.375rem; align-items: center; flex-wrap: wrap;">
-            {% csrf_token %}
-            <input type="hidden" name="request_key" value="{{ batch.adjust_request_key }}">
-            <input type="number" name="quantity_delta" step="0.001" placeholder="+/- Qty" required style="width: 75px; padding: 0.25rem 0.5rem; font-size: 0.8125rem;">
-            <input name="reason" placeholder="Reason" required style="width: 100px; padding: 0.25rem 0.5rem; font-size: 0.8125rem;">
-            <button type="submit" style="padding: 0.25rem 0.5rem; font-size: 0.8125rem;">Adjust</button>
-          </form>
-        </td>
-        <td>
-          <form method="post" action="{% url 'batch_quarantine' batch.pk %}" style="display: flex; gap: 0.375rem; align-items: center; flex-wrap: wrap;">
-            {% csrf_token %}
-            <input type="hidden" name="request_key" value="{{ batch.quarantine_request_key }}">
-            <input type="hidden" name="is_quarantined" value="{{ batch.is_quarantined|yesno:'false,true' }}">
-            <input name="reason" placeholder="Reason" required style="width: 100px; padding: 0.25rem 0.5rem; font-size: 0.8125rem;">
-            <button type="submit" class="{% if batch.is_quarantined %}btn-secondary{% else %}btn-danger{% endif %}" style="padding: 0.25rem 0.5rem; font-size: 0.8125rem;">
-              {% if batch.is_quarantined %}Release{% else %}Quarantine{% endif %}
-            </button>
-          </form>
-        </td>
+        <th>Medicine</th>
+        <th>Batch</th>
+        <th>Expiry</th>
+        <th>On Hand</th>
+        <th>Status</th>
+        <th>Adjustment</th>
+        <th>Quarantine Control</th>
       </tr>
-    {% empty %}
-      <tr><td colspan="7" style="text-align: center; color: var(--color-text-muted); padding: 2rem;">No batches recorded.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+    </thead>
+    <tbody>
+      {% for batch in stock_batches %}
+        <tr>
+          <td><strong style="color: var(--color-secondary);">{{ batch.medicine.generic_name }}</strong></td>
+          <td><code>{{ batch.batch_number }}</code></td>
+          <td>{{ batch.expiry_date }}</td>
+          <td><strong>{{ batch.quantity_on_hand }}</strong></td>
+          <td>
+            {% if batch.is_quarantined %}
+              <span class="badge badge-danger">Quarantined</span>
+            {% else %}
+              <span class="badge badge-success">Available</span>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="{% url 'stock_adjustment' batch.pk %}" style="display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;">
+              {% csrf_token %}
+              <input type="hidden" name="request_key" value="{{ batch.adjust_request_key }}">
+              <input type="number" name="quantity_delta" step="0.001" placeholder="+/- Qty" required style="width: 75px; padding: 0.25rem 0.4rem !important;" class="clinical-input">
+              <input name="reason" placeholder="Reason" required style="width: 100px; padding: 0.25rem 0.4rem !important;" class="clinical-input">
+              <button type="submit" class="btn-stitch-secondary" style="padding: 0.25rem 0.6rem; font-size: 0.75rem; min-height: 28px;">Adjust</button>
+            </form>
+          </td>
+          <td>
+            <form method="post" action="{% url 'batch_quarantine' batch.pk %}" style="display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap;">
+              {% csrf_token %}
+              <input type="hidden" name="request_key" value="{{ batch.quarantine_request_key }}">
+              <input type="hidden" name="is_quarantined" value="{{ batch.is_quarantined|yesno:'false,true' }}">
+              <input name="reason" placeholder="Reason" required style="width: 100px; padding: 0.25rem 0.4rem !important;" class="clinical-input">
+              <button type="submit" class="{% if batch.is_quarantined %}btn-stitch-secondary{% else %}btn-stitch-danger{% endif %}" style="padding: 0.25rem 0.6rem; font-size: 0.75rem; min-height: 28px;">
+                {% if batch.is_quarantined %}Release{% else %}Quarantine{% endif %}
+              </button>
+            </form>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7" style="text-align: center; color: var(--color-text-muted); padding: 2rem;">No batches recorded.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
 
 <div class="action-links">
   <a href="{% url 'home' %}">&larr; Back to dashboard</a>

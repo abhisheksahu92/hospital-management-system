@@ -1,230 +1,336 @@
 {% extends "core/base.html" %}
 
-{% block title %}Invoice {{ invoice.number }} | {{ hospital.name|default:"Hospital Management System" }}{% endblock %}
+{% block title %}Invoice {{ invoice.number }} | {{ hospital.name|default:"Vedant Hospital" }}{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <div>
-    <h1>Invoice {{ invoice.number }}</h1>
-    <p style="color: var(--color-text-muted); font-size: 0.9375rem;">
-      {% if invoice.patient %}{{ invoice.patient.full_name }} ({{ invoice.patient.mrn }}){% else %}Walk-in sale{% endif %}
-    </p>
+<!-- Top Clinical Context & Breadcrumb Bar -->
+<div class="intake-breadcrumb-bar">
+  <div class="breadcrumb-nav">
+    <a href="{% url 'invoice_list' %}">&larr; Invoices Ledger</a>
+    <span class="crumb-separator">/</span>
+    <span class="crumb-current">Invoice {{ invoice.number }}</span>
   </div>
-  <span class="badge">{{ invoice.get_status_display }}</span>
-</div>
-
-<h2>Line Items</h2>
-<table>
-  <thead>
-    <tr>
-      <th>Description</th>
-      <th>Qty</th>
-      <th>Unit price</th>
-      <th>Discount</th>
-      <th>Total</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for line in invoice.lines.all %}
-      <tr>
-        <td>{{ line.description }}</td>
-        <td>{{ line.quantity }}</td>
-        <td>{{ line.unit_price }}</td>
-        <td>{{ line.discount_amount }}</td>
-        <td><strong>{{ line.line_total }}</strong></td>
-      </tr>
-    {% endfor %}
-  </tbody>
-</table>
-
-<dl class="details-grid">
-  <dt>Subtotal</dt><dd>{{ invoice.subtotal }}</dd>
-  <dt>Discount</dt><dd>{{ invoice.discount_total }}</dd>
-  <dt>Tax</dt><dd>{{ invoice.tax_total }}</dd>
-  <dt>Total</dt><dd><strong>{{ invoice.total }}</strong></dd>
-  <dt>Balance</dt>
-  <dd>
-    {% if outstanding > 0 %}
-      <strong style="color: var(--color-danger);">{{ outstanding }}</strong>
+  <div class="intake-badges-group">
+    <span class="badge badge-info">Invoice #{{ invoice.number }}</span>
+    {% if invoice.status == 'settled' %}
+      <span class="badge badge-success">Settled &amp; Reconciled</span>
+    {% elif invoice.status == 'issued' %}
+      <span class="badge badge-warning">Awaiting Settlement</span>
+    {% elif invoice.status == 'voided' %}
+      <span class="badge badge-danger">Voided</span>
     {% else %}
-      <strong style="color: var(--color-success);">0.00</strong>
+      <span class="badge">{{ invoice.get_status_display }}</span>
     {% endif %}
-  </dd>
-</dl>
-
-<h2>Payments Received</h2>
-<div class="card-panel">
-  <ul style="list-style: none;">
-    {% for payment in invoice.payments.all %}
-      <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
-        <span><strong>{{ payment.receipt_number }}</strong>: {{ payment.amount }} via {{ payment.method.name }}</span>
-        <div>
-          {% for refund in payment.refunds.all %}
-            <span class="badge badge-warning">Refund {{ refund.amount }} ({{ refund.get_status_display }})</span>
-          {% endfor %}
-        </div>
-      </li>
-    {% empty %}
-      <li style="color: var(--color-text-muted);">No payments recorded yet.</li>
-    {% endfor %}
-  </ul>
+  </div>
 </div>
 
-<h2>Billing Adjustments</h2>
-<div class="card-panel">
-  <ul style="list-style: none;">
-    {% for adjustment in invoice.adjustments.all %}
-      <li style="padding: 0.5rem 0; border-bottom: 1px solid var(--color-border);">
-        <strong>{{ adjustment.amount }}</strong>: {{ adjustment.reason }}
-      </li>
-    {% empty %}
-      <li style="color: var(--color-text-muted);">No adjustments recorded.</li>
-    {% endfor %}
-  </ul>
+<!-- Header Card -->
+<div class="hero-context-panel" style="margin-bottom: 2rem;">
+  <div style="display: flex; align-items: center; gap: 1.25rem;">
+    <div style="width: 52px; height: 52px; border-radius: var(--radius-xl); background: #e0f2fe; color: var(--color-primary); display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-xs);">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+    </div>
+    <div>
+      <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <h1 style="font-size: 1.625rem; font-weight: 800; color: var(--color-secondary); margin: 0;">Invoice {{ invoice.number }}</h1>
+        <span class="badge">{{ invoice.get_status_display }}</span>
+      </div>
+      <p style="color: var(--color-text-muted); font-size: 0.875rem; margin-top: 0.25rem;">
+        {% if invoice.patient %}
+          Patient: <a href="{% url 'patient_detail' invoice.patient.pk %}" style="font-weight: 700; color: var(--color-primary); text-decoration: none;">{{ invoice.patient.full_name }} ({{ invoice.patient.mrn }})</a>
+        {% else %}
+          Patient: <strong>Walk-in Pharmacy Sale</strong>
+        {% endif %}
+      </p>
+    </div>
+  </div>
+
+  <div class="hero-actions">
+    {% if can_back_to_patient and invoice.patient_id %}
+      <a href="{% url 'patient_detail' invoice.patient_id %}" class="btn-stitch-secondary">
+        &larr; Patient profile
+      </a>
+    {% endif %}
+  </div>
 </div>
 
+<!-- Invoice Items Table -->
+<section style="margin-bottom: 2rem;">
+  <h2 style="font-size: 1.2rem; font-weight: 800; color: var(--color-secondary); margin-bottom: 1rem;">Line Items</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th>Qty</th>
+        <th>Unit price</th>
+        <th>Discount</th>
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in invoice.lines.all %}
+        <tr>
+          <td><strong>{{ line.description }}</strong></td>
+          <td>{{ line.quantity }}</td>
+          <td>{{ line.unit_price }}</td>
+          <td>{{ line.discount_amount }}</td>
+          <td><strong style="color: var(--color-secondary);">{{ line.line_total }}</strong></td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Financial Totals Summary Grid -->
+  <dl class="details-grid" style="grid-template-columns: repeat(5, 1fr); text-align: center; gap: 1rem; margin-top: 1.5rem;">
+    <div style="border-right: 1px solid var(--color-border); padding-right: 1rem;">
+      <dt style="font-size: 0.75rem; text-transform: uppercase;">Subtotal</dt>
+      <dd style="font-size: 1.25rem; font-weight: 700; color: var(--color-secondary); margin-top: 0.25rem;">{{ invoice.subtotal }}</dd>
+    </div>
+    <div style="border-right: 1px solid var(--color-border); padding-right: 1rem;">
+      <dt style="font-size: 0.75rem; text-transform: uppercase;">Discount</dt>
+      <dd style="font-size: 1.25rem; font-weight: 700; color: var(--color-primary); margin-top: 0.25rem;">{{ invoice.discount_total }}</dd>
+    </div>
+    <div style="border-right: 1px solid var(--color-border); padding-right: 1rem;">
+      <dt style="font-size: 0.75rem; text-transform: uppercase;">Tax</dt>
+      <dd style="font-size: 1.25rem; font-weight: 700; color: var(--color-secondary); margin-top: 0.25rem;">{{ invoice.tax_total }}</dd>
+    </div>
+    <div style="border-right: 1px solid var(--color-border); padding-right: 1rem;">
+      <dt style="font-size: 0.75rem; text-transform: uppercase;">Total</dt>
+      <dd style="font-size: 1.25rem; font-weight: 800; color: var(--color-secondary); margin-top: 0.25rem;">{{ invoice.total }}</dd>
+    </div>
+    <div>
+      <dt style="font-size: 0.75rem; text-transform: uppercase;">Balance</dt>
+      <dd style="font-size: 1.25rem; font-weight: 800; margin-top: 0.25rem;">
+        {% if outstanding > 0 %}
+          <span style="color: var(--color-danger);">{{ outstanding }}</span>
+        {% else %}
+          <span style="color: var(--color-success);">0.00</span>
+        {% endif %}
+      </dd>
+    </div>
+  </dl>
+</section>
+
+<!-- Two-Column Ledger: Payments Received (Left) & Adjustments (Right) -->
+<div class="workspace-split" style="margin-bottom: 2rem;">
+  
+  <div class="stitch-panel">
+    <div class="stitch-panel-header">
+      <h2 style="font-size: 1.05rem; font-weight: 700; margin: 0;">Payments Received</h2>
+      <span class="badge badge-success">{{ invoice.payments.count }} Settled</span>
+    </div>
+
+    <ul style="list-style: none; padding: 0; margin-top: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+      {% for payment in invoice.payments.all %}
+        <li style="padding: 0.85rem; background: var(--color-surface-container); border: 1px solid var(--color-border); border-radius: var(--radius-md); display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <strong style="color: var(--color-secondary);">{{ payment.receipt_number }}</strong>
+            <span style="margin: 0 0.4rem; color: #94a3b8;">&bull;</span>
+            <span style="font-weight: 700; color: var(--color-success);">{{ payment.amount }}</span>
+            <div style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.2rem;">Method: {{ payment.method.name }}</div>
+          </div>
+          <div>
+            {% for refund in payment.refunds.all %}
+              <span class="badge badge-warning">Refund {{ refund.amount }} ({{ refund.get_status_display }})</span>
+            {% endfor %}
+          </div>
+        </li>
+      {% empty %}
+        <li style="color: var(--color-text-muted); font-size: 0.875rem; text-align: center; padding: 1.5rem;">No payments recorded yet.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="stitch-panel">
+    <div class="stitch-panel-header">
+      <h2 style="font-size: 1.05rem; font-weight: 700; margin: 0;">Billing Adjustments</h2>
+      <span class="badge badge-info">{{ invoice.adjustments.count }} Audited</span>
+    </div>
+
+    <ul style="list-style: none; padding: 0; margin-top: 1rem; display: flex; flex-direction: column; gap: 0.75rem;">
+      {% for adjustment in invoice.adjustments.all %}
+        <li style="padding: 0.85rem; background: var(--color-surface-container); border: 1px solid var(--color-border); border-radius: var(--radius-md);">
+          <strong>{{ adjustment.amount }}</strong>: {{ adjustment.reason }}
+        </li>
+      {% empty %}
+        <li style="color: var(--color-text-muted); font-size: 0.875rem; text-align: center; padding: 1.5rem;">No adjustments recorded.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+</div>
+
+<!-- Pharmacy Return Requests -->
 {% if pharmacy_returns %}
-  <h2>Pharmacy Return Requests</h2>
-  {% for pharmacy_return in pharmacy_returns %}
-    <div class="card-panel">
-      <h3>{{ pharmacy_return.number }}: {{ pharmacy_return.refund_total }}</h3>
-      <p style="margin-bottom: 0.75rem; color: var(--color-text-muted);">Reason: {{ pharmacy_return.reason }}</p>
-      <ul style="margin-left: 1.25rem; margin-bottom: 1rem;">
-        {% for line in pharmacy_return.lines.all %}
-          <li>{% if line.sale_line %}Sale line {{ line.sale_line_id }}{% else %}Dispensing line {{ line.dispensing_line_id }}{% endif %}: {{ line.quantity }} units, {{ line.refund_amount }}</li>
-        {% endfor %}
-      </ul>
-      {% if is_admin and invoice.payments.all %}
-        <form method="post" action="{% url 'invoice_refund' invoice.pk %}" style="margin-bottom: 1rem;">
-          {% csrf_token %}
-          <input type="hidden" name="pharmacy_return" value="{{ pharmacy_return.pk }}">
-          <p>
-            <label>Payment Receipt</label>
-            <select name="payment" required>
-              {% for payment in invoice.payments.all %}
-                <option value="{{ payment.pk }}">{{ payment.receipt_number }} - {{ payment.amount }}</option>
-              {% endfor %}
-            </select>
-          </p>
-          <p>
-            <label>Refund Amount</label>
-            <input type="number" name="amount" value="{{ pharmacy_return.refund_total }}" max="{{ pharmacy_return.refund_total }}" min="0.01" step="0.01" required>
-          </p>
-          <p>
-            <label>Refund Reason</label>
-            <input name="reason" value="{{ pharmacy_return.reason }}" required>
-          </p>
-          <button type="submit">Issue return refund</button>
-        </form>
-      {% endif %}
-      {% if is_admin %}
-        <form method="post" action="{% url 'pharmacy_return_reject' pharmacy_return.pk %}">
-          {% csrf_token %}
-          <p>
-            <label>Rejection reason</label>
-            <input name="reason" required>
-          </p>
-          <button type="submit" class="btn-danger">Reject return</button>
-        </form>
-      {% endif %}
-    </div>
-  {% endfor %}
-{% endif %}
-
-{% if invoice.status == "issued" and is_reception and outstanding > 0 %}
-  <h2>Record Payment</h2>
-  <div class="card-panel">
-    <form method="post" action="{% url 'payment_create' invoice.pk %}">
-      {% csrf_token %}
-      <p>
-        <label>Payment Method</label>
-        <select name="method" required>
-          {% for method in payment_methods %}
-            <option value="{{ method.pk }}">{{ method.name }}</option>
+  <section style="margin-bottom: 2rem;">
+    <h2 style="font-size: 1.2rem; font-weight: 800; color: var(--color-secondary); margin-bottom: 1rem;">Pharmacy Return Requests</h2>
+    {% for pharmacy_return in pharmacy_returns %}
+      <div class="stitch-panel" style="margin-bottom: 1rem;">
+        <div class="stitch-panel-header">
+          <h3 style="font-size: 1rem; font-weight: 700; margin: 0;">{{ pharmacy_return.number }}: {{ pharmacy_return.refund_total }}</h3>
+          <span class="badge badge-warning">Return Pending</span>
+        </div>
+        <p style="margin: 0.75rem 0; color: var(--color-text-muted); font-size: 0.875rem;">Reason: <strong>{{ pharmacy_return.reason }}</strong></p>
+        <ul style="margin-left: 1.25rem; margin-bottom: 1rem; font-size: 0.875rem;">
+          {% for line in pharmacy_return.lines.all %}
+            <li>{% if line.sale_line %}Sale line {{ line.sale_line_id }}{% else %}Dispensing line {{ line.dispensing_line_id }}{% endif %}: {{ line.quantity }} units, {{ line.refund_amount }}</li>
           {% endfor %}
-        </select>
-      </p>
-      <p>
-        <label>Payment Amount</label>
-        <input type="number" name="amount" min="0.01" max="{{ outstanding }}" step="0.01" value="{{ outstanding }}" required>
-      </p>
-      <p>
-        <label>Reference / Transaction Note</label>
-        <input name="reference" maxlength="100" placeholder="e.g. Bank/UPI transaction ref">
-      </p>
-      <button type="submit">Record payment</button>
-    </form>
-  </div>
-{% endif %}
-
-{% if invoice.status == "issued" and is_admin %}
-  <h2>Administrator Actions</h2>
-  <div class="card-panel">
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem;">
-      <form method="post" action="{% url 'invoice_adjustment' invoice.pk %}">
-        {% csrf_token %}
-        <input type="hidden" name="kind" value="discount">
-        <p>
-          <label>Discount amount</label>
-          <input type="number" name="amount" min="0.01" max="{{ outstanding }}" step="0.01" required>
-        </p>
-        <p>
-          <label>Reason</label>
-          <input name="reason" required>
-        </p>
-        <button type="submit">Apply discount</button>
-      </form>
-
-      <form method="post" action="{% url 'invoice_adjustment' invoice.pk %}">
-        {% csrf_token %}
-        <input type="hidden" name="kind" value="adjustment">
-        <p>
-          <label>Adjustment amount (+/-)</label>
-          <input type="number" name="amount" step="0.01" required>
-        </p>
-        <p>
-          <label>Reason</label>
-          <input name="reason" required>
-        </p>
-        <button type="submit">Record adjustment</button>
-      </form>
-    </div>
-
-    {% for payment in invoice.payments.all %}
-      <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--color-border);">
-        <form method="post" action="{% url 'invoice_refund' invoice.pk %}">
-          {% csrf_token %}
-          <input type="hidden" name="payment" value="{{ payment.pk }}">
-          <p>
-            <label>Refund amount for receipt {{ payment.receipt_number }}</label>
-            <input type="number" name="amount" min="0.01" max="{{ payment.amount }}" step="0.01" required>
-          </p>
-          <p>
-            <label>Reason</label>
-            <input name="reason" required>
-          </p>
-          <button type="submit" class="btn-danger">Issue refund</button>
-        </form>
+        </ul>
+        {% if is_admin and invoice.payments.all %}
+          <form method="post" action="{% url 'invoice_refund' invoice.pk %}" style="display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1rem;">
+            {% csrf_token %}
+            <input type="hidden" name="pharmacy_return" value="{{ pharmacy_return.pk }}">
+            <div>
+              <label style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 0.25rem;">Payment Receipt</label>
+              <select name="payment" required class="clinical-input" style="width: auto;">
+                {% for payment in invoice.payments.all %}
+                  <option value="{{ payment.pk }}">{{ payment.receipt_number }} - {{ payment.amount }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 0.25rem;">Refund Amount</label>
+              <input type="number" name="amount" value="{{ pharmacy_return.refund_total }}" max="{{ pharmacy_return.refund_total }}" min="0.01" step="0.01" required class="clinical-input" style="width: 120px;">
+            </div>
+            <div>
+              <label style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 0.25rem;">Refund Reason</label>
+              <input name="reason" value="{{ pharmacy_return.reason }}" required class="clinical-input" style="width: 180px;">
+            </div>
+            <button type="submit" class="btn-stitch-primary">Issue return refund</button>
+          </form>
+        {% endif %}
+        {% if is_admin %}
+          <form method="post" action="{% url 'pharmacy_return_reject' pharmacy_return.pk %}" style="display: flex; gap: 0.75rem; align-items: flex-end;">
+            {% csrf_token %}
+            <div>
+              <label style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 0.25rem;">Rejection reason</label>
+              <input name="reason" required class="clinical-input" style="width: 260px;">
+            </div>
+            <button type="submit" class="btn-stitch-danger">Reject return</button>
+          </form>
+        {% endif %}
       </div>
     {% endfor %}
+  </section>
+{% endif %}
 
-    {% if can_void %}
-      <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--color-border);">
-        <form method="post" action="{% url 'invoice_void' invoice.pk %}">
+<!-- Record Payment Form (Reception Cashier) -->
+{% if invoice.status == "issued" and is_reception and outstanding > 0 %}
+  <section style="margin-bottom: 2rem;">
+    <div class="stitch-panel">
+      <div class="stitch-panel-header">
+        <h2 style="font-size: 1.15rem; font-weight: 700; margin: 0;">Record Payment</h2>
+        <span class="badge badge-success">Cashier Counter</span>
+      </div>
+
+      <form method="post" action="{% url 'payment_create' invoice.pk %}" style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1rem; align-items: flex-end; margin-top: 1rem;">
+        {% csrf_token %}
+        <div>
+          <label style="font-size: 0.8125rem; font-weight: 700; display: block; margin-bottom: 0.35rem;">Payment Method</label>
+          <select name="method" required class="clinical-input">
+            {% for method in payment_methods %}
+              <option value="{{ method.pk }}">{{ method.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label style="font-size: 0.8125rem; font-weight: 700; display: block; margin-bottom: 0.35rem;">Payment Amount</label>
+          <input type="number" name="amount" min="0.01" max="{{ outstanding }}" step="0.01" value="{{ outstanding }}" required class="clinical-input">
+        </div>
+
+        <div>
+          <label style="font-size: 0.8125rem; font-weight: 700; display: block; margin-bottom: 0.35rem;">Reference / Transaction Note</label>
+          <input name="reference" maxlength="100" placeholder="e.g. Bank/UPI transaction ref" class="clinical-input">
+        </div>
+
+        <div>
+          <button type="submit" class="btn-stitch-primary" style="height: 44px; padding: 0 1.5rem;">
+            Record payment
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+{% endif %}
+
+<!-- Administrator Financial Actions -->
+{% if invoice.status == "issued" and is_admin %}
+  <section style="margin-bottom: 2rem;">
+    <div class="stitch-panel">
+      <div class="stitch-panel-header">
+        <h2 style="font-size: 1.15rem; font-weight: 700; margin: 0;">Administrator Actions</h2>
+        <span class="badge badge-warning">Supervisory Overrides</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-top: 1.25rem;">
+        <form method="post" action="{% url 'invoice_adjustment' invoice.pk %}" style="background: var(--color-surface-container); padding: 1.25rem; border-radius: var(--radius-lg); border: 1px solid var(--color-border);">
           {% csrf_token %}
-          <p>
-            <label>Void reason</label>
-            <input name="reason" required placeholder="Reason for voiding entire invoice...">
-          </p>
-          <button type="submit" class="btn-danger">Void invoice</button>
+          <input type="hidden" name="kind" value="discount">
+          <h4 style="font-size: 0.9375rem; font-weight: 700; margin-bottom: 0.75rem;">Apply Discount</h4>
+          <div style="margin-bottom: 0.75rem;">
+            <label style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 0.25rem;">Discount amount</label>
+            <input type="number" name="amount" min="0.01" max="{{ outstanding }}" step="0.01" required class="clinical-input">
+          </div>
+          <div style="margin-bottom: 1rem;">
+            <label style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 0.25rem;">Reason</label>
+            <input name="reason" required class="clinical-input" placeholder="Clinical discount reason">
+          </div>
+          <button type="submit" class="btn-stitch-primary" style="width: 100%;">Apply discount</button>
+        </form>
+
+        <form method="post" action="{% url 'invoice_adjustment' invoice.pk %}" style="background: var(--color-surface-container); padding: 1.25rem; border-radius: var(--radius-lg); border: 1px solid var(--color-border);">
+          {% csrf_token %}
+          <input type="hidden" name="kind" value="adjustment">
+          <h4 style="font-size: 0.9375rem; font-weight: 700; margin-bottom: 0.75rem;">Billing Adjustment</h4>
+          <div style="margin-bottom: 0.75rem;">
+            <label style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 0.25rem;">Adjustment amount (+/-)</label>
+            <input type="number" name="amount" step="0.01" required class="clinical-input">
+          </div>
+          <div style="margin-bottom: 1rem;">
+            <label style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 0.25rem;">Reason</label>
+            <input name="reason" required class="clinical-input" placeholder="Ledger correction reason">
+          </div>
+          <button type="submit" class="btn-stitch-secondary" style="width: 100%;">Record adjustment</button>
         </form>
       </div>
-    {% endif %}
-  </div>
+
+      {% for payment in invoice.payments.all %}
+        <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--color-border);">
+          <form method="post" action="{% url 'invoice_refund' invoice.pk %}" style="display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap;">
+            {% csrf_token %}
+            <input type="hidden" name="payment" value="{{ payment.pk }}">
+            <div>
+              <label style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 0.25rem;">Refund amount for receipt {{ payment.receipt_number }}</label>
+              <input type="number" name="amount" min="0.01" max="{{ payment.amount }}" step="0.01" required class="clinical-input" style="width: 140px;">
+            </div>
+            <div>
+              <label style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 0.25rem;">Reason</label>
+              <input name="reason" required class="clinical-input" style="width: 220px;" placeholder="Authorized refund justification">
+            </div>
+            <button type="submit" class="btn-stitch-danger">Issue refund</button>
+          </form>
+        </div>
+      {% endfor %}
+
+      {% if can_void %}
+        <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--color-border);">
+          <form method="post" action="{% url 'invoice_void' invoice.pk %}" style="display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap;">
+            {% csrf_token %}
+            <div style="flex: 1; max-width: 480px;">
+              <label style="font-size: 0.75rem; font-weight: 700; display: block; margin-bottom: 0.25rem;">Void reason</label>
+              <input name="reason" required placeholder="Reason for voiding entire invoice..." class="clinical-input">
+            </div>
+            <button type="submit" class="btn-stitch-danger">Void invoice</button>
+          </form>
+        </div>
+      {% endif %}
+    </div>
+  </section>
 {% endif %}
 
 <div class="action-links">
-  {% if can_back_to_patient %}<a href="{% url 'patient_detail' invoice.patient_id %}">&larr; Back to patient</a>{% endif %}
-  <a href="{% url 'invoice_list' %}">&larr; Back to invoices</a>
+  {% if can_back_to_patient and invoice.patient_id %}<a href="{% url 'patient_detail' invoice.patient_id %}">&larr; Back to patient profile</a>{% endif %}
+  <a href="{% url 'invoice_list' %}">&larr; Back to invoices ledger</a>
 </div>
 {% endblock %}

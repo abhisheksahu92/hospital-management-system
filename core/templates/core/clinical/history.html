@@ -1,45 +1,95 @@
 {% extends "core/base.html" %}
 
-{% block title %}Clinical history | {{ hospital.name|default:"Hospital Management System" }}{% endblock %}
+{% block title %}Clinical history | {{ hospital.name|default:"Vedant Hospital" }}{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <div>
-    <h1>Clinical History</h1>
-    <p style="color: var(--color-text-muted); font-size: 0.9375rem;">
-      Patient: <strong>{{ patient.mrn }} — {{ patient.full_name }}</strong>
-    </p>
+<div class="intake-breadcrumb-bar">
+  <div class="breadcrumb-nav">
+    <a href="{% url 'patient_list' %}">&larr; Patient Directory</a>
+    <span class="crumb-separator">/</span>
+    <a href="{% url 'patient_detail' patient.pk %}">{{ patient.full_name }}</a>
+    <span class="crumb-separator">/</span>
+    <span class="crumb-current">Clinical History</span>
+  </div>
+  <div class="intake-badges-group">
+    <span class="badge badge-info">MRN: {{ patient.mrn }}</span>
+    <span class="badge badge-success">EMR Longitudinal Record</span>
   </div>
 </div>
 
-<div class="alert-warning-box" style="background-color: #fff7ed; border-color: #fed7aa;">
-  <strong style="color: #c2410c;">Allergy / Safety Notes:</strong>
-  <span style="color: #9a3412;">{{ patient.allergy_safety_notes|default:"No safety information recorded" }}</span>
+<div class="hero-context-panel" style="margin-bottom: 1.5rem;">
+  <div>
+    <h1 style="font-size: 1.625rem; font-weight: 800; color: var(--color-secondary); margin: 0;">Clinical History</h1>
+    <p style="color: var(--color-text-muted); font-size: 0.875rem; margin-top: 0.25rem;">
+      Patient: <strong style="color: var(--color-secondary);">{{ patient.full_name }}</strong> (ID: {{ patient.mrn }})
+    </p>
+  </div>
+  <div class="hero-actions">
+    <a href="{% url 'patient_detail' patient.pk %}" class="btn-stitch-secondary">
+      &larr; Back to patient profile
+    </a>
+  </div>
 </div>
 
-<h2>Doctor Consultations</h2>
-<table>
-  <thead>
-    <tr>
-      <th>Date & Time</th>
-      <th>Diagnosis / Summary</th>
-      <th>Action</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for consultation in consultations %}
+<div class="safety-alert-card" style="margin-bottom: 2rem;">
+  <div class="safety-header">
+    <span class="safety-title">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+      Allergy &amp; Safety Profile
+    </span>
+    <span class="badge badge-danger">Clinical Alert</span>
+  </div>
+  <p class="safety-body">
+    {{ patient.allergy_safety_notes|default:"No critical allergy or safety contraindications recorded." }}
+  </p>
+</div>
+
+<section style="margin-bottom: 2rem;">
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+    <h2 style="font-size: 1.25rem; font-weight: 800; color: var(--color-secondary); margin: 0;">Doctor Consultations</h2>
+    <span class="badge badge-info">{{ consultations|length }} Prior Encounters</span>
+  </div>
+
+  <table>
+    <thead>
       <tr>
-        <td><strong>{{ consultation.created_at|date:'Y-m-d H:i' }}</strong></td>
-        <td>{{ consultation.diagnosis|default:"Consultation encounter" }}</td>
-        <td><a href="{% url 'consultation_detail' consultation.pk %}" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8125rem;">View details</a></td>
+        <th>Date &amp; Time</th>
+        <th>Diagnosis / Summary</th>
+        <th>Action</th>
       </tr>
-    {% empty %}
-      <tr>
-        <td colspan="3" style="text-align: center; color: var(--color-text-muted); padding: 2rem;">No previous consultations recorded for this doctor.</td>
-      </tr>
-    {% endfor %}
-  </tbody>
-</table>
+    </thead>
+    <tbody>
+      {% for consultation in consultations %}
+        <tr>
+          <td>
+            <strong style="color: var(--color-primary);">{{ consultation.created_at|date:'Y-m-d H:i' }}</strong>
+          </td>
+          <td>
+            <div style="font-weight: 700; color: var(--color-secondary);">
+              {{ consultation.diagnosis|default:"Consultation encounter" }}
+            </div>
+            {% if consultation.clinical_notes %}
+              <div style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.25rem;">
+                {{ consultation.clinical_notes|truncatewords:20 }}
+              </div>
+            {% endif %}
+          </td>
+          <td>
+            <a href="{% url 'consultation_detail' consultation.pk %}" class="btn-stitch-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.75rem; min-height: 32px;">
+              View details &rarr;
+            </a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="3" style="text-align: center; color: var(--color-text-muted); padding: 3rem;">
+            No previous consultations recorded for this doctor.
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
 
 <div class="action-links">
   <a href="{% url 'patient_detail' patient.pk %}">&larr; Back to patient profile</a>

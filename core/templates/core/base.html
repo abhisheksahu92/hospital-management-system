@@ -75,5 +75,21 @@
 
       {% block content %}{% endblock %}
     </main>
+
+    <!-- Hospital Clinical Footer -->
+    <footer class="stitch-footer">
+      <div class="footer-container">
+        <div class="footer-left">
+          <strong>{{ hospital.name|default:"Vedant Hospital" }}</strong>
+          <span>&bull; Hardoi Road, Rajaji Puram, Lucknow-226017, UP</span>
+          <span>&bull; Emergency: <strong style="color: #ef4444;">102 / Ext. 99</strong></span>
+        </div>
+        <div class="footer-right">
+          <span class="badge badge-info" style="font-size: 0.6875rem;">NABH Accredited</span>
+          <span class="badge badge-success" style="font-size: 0.6875rem;">256-Bit TLS Secured EHR</span>
+          <span style="color: var(--color-text-muted); font-size: 0.75rem;">&copy; {% now "Y" %} Vedant Hospital &amp; Research Centre</span>
+        </div>
+      </div>
+    </footer>
   </body>
 </html>

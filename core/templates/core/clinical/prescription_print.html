@@ -3,29 +3,190 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Prescription {{ prescription.number }} | Hospital Management System</title>
+    <title>Prescription {{ prescription.number }} | Vedant Hospital</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-      @media print { button { display: none; } body { font: 12pt serif; } }
+      :root {
+        --color-primary: #0284c7;
+        --color-secondary: #0f172a;
+        --color-border: #e2e8f0;
+      }
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        color: #0f172a;
+        background: #f8fafc;
+        margin: 0;
+        padding: 2rem 1rem;
+      }
+      .rx-sheet {
+        max-width: 800px;
+        margin: 0 auto;
+        background: #ffffff;
+        border: 1px solid var(--color-border);
+        border-radius: 12px;
+        padding: 3rem;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+      }
+      .rx-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 2px solid #0284c7;
+        padding-bottom: 1.5rem;
+        margin-bottom: 1.5rem;
+      }
+      .rx-hospital-title {
+        font-size: 1.75rem;
+        font-weight: 800;
+        color: #0f172a;
+      }
+      .rx-hospital-sub {
+        font-size: 0.8125rem;
+        color: #64748b;
+        margin-top: 0.25rem;
+      }
+      .rx-meta-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem 1.5rem;
+        background: #f8fafc;
+        padding: 1.25rem;
+        border-radius: 8px;
+        margin-bottom: 2rem;
+        font-size: 0.875rem;
+      }
+      .rx-meta-grid strong {
+        color: #334155;
+      }
+      .rx-symbol {
+        font-size: 2.25rem;
+        font-weight: 800;
+        color: #0284c7;
+        margin-bottom: 1rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 2.5rem;
+      }
+      th, td {
+        padding: 0.75rem 1rem;
+        text-align: left;
+        border-bottom: 1px solid #e2e8f0;
+        font-size: 0.875rem;
+      }
+      th {
+        background: #f1f5f9;
+        font-weight: 700;
+        color: #334155;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+      }
+      .rx-footer {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        border-top: 1px solid #e2e8f0;
+        padding-top: 2rem;
+        margin-top: 2rem;
+      }
+      .doc-sig {
+        text-align: center;
+        min-width: 200px;
+        border-top: 1px solid #0f172a;
+        padding-top: 0.5rem;
+        font-size: 0.875rem;
+      }
+      .print-btn {
+        background: #0284c7;
+        color: #ffffff;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      @media print {
+        body { background: #ffffff; padding: 0; }
+        .rx-sheet { border: none; box-shadow: none; padding: 0; }
+        .no-print { display: none !important; }
+      }
     </style>
   </head>
   <body>
-    <main>
-      <h1>Prescription</h1>
-      <p>Prescription ID: {{ prescription.number }}</p>
-      <p>Patient: {{ prescription.patient.mrn }} — {{ prescription.patient.full_name }}</p>
-      <p>Issued: {{ prescription.issued_at|date:'Y-m-d H:i' }}</p>
-      <p>Doctor: {{ prescription.doctor.user.get_full_name|default:prescription.doctor.user.username }}</p>
-      <p>Allergy/safety information: {{ prescription.patient.allergy_safety_notes|default:"No safety information recorded" }}</p>
-      <h2>Medicines</h2>
+    <main class="rx-sheet">
+      <!-- Hospital Header -->
+      <div class="rx-header">
+        <div>
+          <div class="rx-hospital-title">VEDANT HOSPITAL</div>
+          <div class="rx-hospital-sub">Hardoi Road, Near Raj State, Kanpur Ring Road, Rajaji Puram, Lucknow-226017, UP</div>
+          <div class="rx-hospital-sub">Emergency: 102 / Ext. 99 &bull; NABH Accredited</div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 1.15rem; font-weight: 800; color: #0284c7;">{{ prescription.number }}</div>
+          <div style="font-size: 0.75rem; color: #64748b;">Issued: {{ prescription.issued_at|date:'Y-m-d H:i' }}</div>
+        </div>
+      </div>
+
+      <!-- Patient & Doctor Metadata -->
+      <div class="rx-meta-grid">
+        <div><strong>Patient:</strong> {{ prescription.patient.full_name }}</div>
+        <div><strong>Patient ID (MRN):</strong> {{ prescription.patient.mrn }}</div>
+        <div><strong>Attending Doctor:</strong> Dr. {{ prescription.doctor.user.get_full_name|default:prescription.doctor.user.username }}</div>
+        <div><strong>Department:</strong> {{ prescription.doctor.department.name|default:"General Medicine / OPD" }}</div>
+        <div style="grid-column: 1 / -1; color: #991b1b;">
+          <strong>Allergy/Safety Information:</strong> {{ prescription.patient.allergy_safety_notes|default:"No safety information recorded" }}
+        </div>
+      </div>
+
+      <div class="rx-symbol">&#8478;</div>
+
+      <!-- Medicine Table -->
       <table>
-        <thead><tr><th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Quantity</th><th>Instructions</th></tr></thead>
+        <thead>
+          <tr>
+            <th>Medicine</th>
+            <th>Dosage</th>
+            <th>Frequency</th>
+            <th>Duration</th>
+            <th>Quantity</th>
+            <th>Instructions</th>
+          </tr>
+        </thead>
         <tbody>
           {% for item in items %}
-            <tr><td>{{ item.medicine.generic_name }} {{ item.medicine.strength }}</td><td>{{ item.dosage }}</td><td>{{ item.frequency }}</td><td>{{ item.duration }}</td><td>{{ item.quantity }}</td><td>{{ item.instructions }}</td></tr>
+            <tr>
+              <td><strong>{{ item.medicine.generic_name }} {{ item.medicine.strength }}</strong></td>
+              <td>{{ item.dosage }}</td>
+              <td>{{ item.frequency }}</td>
+              <td>{{ item.duration }}</td>
+              <td>{{ item.quantity }}</td>
+              <td>{{ item.instructions }}</td>
+            </tr>
           {% endfor %}
         </tbody>
       </table>
-      <button type="button" onclick="window.print()">Print</button>
+
+      <!-- Doctor Signature & Stamp Footer -->
+      <div class="rx-footer">
+        <div style="font-size: 0.75rem; color: #94a3b8;">
+          Computer-generated official e-Prescription.<br>
+          Vedant Hospital Electronic Health Records System.
+        </div>
+        <div class="doc-sig">
+          <strong>Dr. {{ prescription.doctor.user.get_full_name|default:prescription.doctor.user.username }}</strong><br>
+          <span style="font-size: 0.75rem; color: #64748b;">Authorized Signatory</span>
+        </div>
+      </div>
+
+      <div class="no-print" style="margin-top: 2rem; display: flex; justify-content: flex-end; gap: 1rem;">
+        <button type="button" onclick="window.close()" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 0.75rem 1.5rem; border-radius: 8px; font-weight: 600; cursor: pointer;">Close</button>
+        <button type="button" onclick="window.print()" class="print-btn">Print Prescription</button>
+      </div>
     </main>
   </body>
 </html>
