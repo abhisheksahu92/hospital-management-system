@@ -7,4 +7,6 @@ def hospital_context(request):
         "hospital": hospital,
         "POSTHOG_KEY": os.getenv("POSTHOG_KEY", ""),
         "POSTHOG_HOST": os.getenv("POSTHOG_HOST", "https://eu.i.posthog.com"),
+        "CLOUDFLARE_ANALYTICS_TOKEN": os.getenv("CLOUDFLARE_ANALYTICS_TOKEN", "ab3ab9f60f1b42468eecefb4ff7b00ba"),
     }
+

@@ -161,5 +161,10 @@
         document.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
       })();
     </script>
+    {% if CLOUDFLARE_ANALYTICS_TOKEN %}
+    <!-- Cloudflare Web Analytics -->
+    <script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "{{ CLOUDFLARE_ANALYTICS_TOKEN }}"}'></script>
+    <!-- End Cloudflare Web Analytics -->
+    {% endif %}
   </body>
 </html>
