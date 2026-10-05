@@ -1,67 +1,233 @@
 {% extends "core/base.html" %}
 
-{% block title %}{% if creating %}Book appointment{% else %}Reschedule appointment{% endif %} | {{ hospital.name|default:"Vedant Hospital" }}{% endblock %}
+{% block title %}{% if creating %}New appointment{% else %}Reschedule appointment{% endif %} | {{ hospital.name|default:"Vedant Hospital" }}{% endblock %}
 
 {% block content %}
-<div class="intake-breadcrumb-bar">
-  <div class="breadcrumb-nav">
-    <a href="{% url 'appointment_list' %}">&larr; Appointments Directory</a>
-    <span class="crumb-separator">/</span>
-    <span class="crumb-current">{% if creating %}Book Clinic Appointment{% else %}Reschedule Appointment{% endif %}</span>
-  </div>
-  <div class="intake-badges-group">
-    <span class="badge badge-info">Outpatient Clinic</span>
-    <span class="badge badge-success">Schedule Desk</span>
-  </div>
-</div>
+<nav class="page-breadcrumb" aria-label="Breadcrumb">
+  <a href="{% url 'appointment_list' %}">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+    Appointments
+  </a>
+  <span>/</span>
+  <span>{% if creating %}New appointment{% else %}Reschedule{% endif %}</span>
+</nav>
 
-<div class="intake-main-card" style="max-width: 680px; margin: 0 auto;">
-  <div class="form-hero-header">
-    <div>
-      <div class="form-id-tag">CLINIC SCHEDULING &bull; OPD DESK</div>
-      <h1 class="form-main-heading">{% if creating %}Book appointment{% else %}Reschedule appointment{% endif %}</h1>
-      <p class="form-main-sub">
-        {% if creating %}Schedule a verified patient consultation visit with an attending physician.{% else %}Update scheduled appointment consultation slot.{% endif %}
-      </p>
-    </div>
+<header class="appointment-page-header">
+  <div>
+    <span class="page-kicker">Outpatient scheduling</span>
+    <h1>{% if creating %}New appointment{% else %}Reschedule appointment{% endif %}</h1>
+    <p>{% if creating %}Coordinate the patient, care team, and consultation time in one step.{% else %}Update the consultation schedule while preserving the appointment record.{% endif %}</p>
   </div>
+  <div class="appointment-header-meta">
+    <span><i class="status-indicator"></i>Scheduling desk online</span>
+    <span>
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      30-minute standard slot
+    </span>
+  </div>
+</header>
 
-  <form method="post" novalidate>
-    {% csrf_token %}
+<form method="post" novalidate class="appointment-workspace" id="appointment-form">
+  {% csrf_token %}
 
+  <div class="appointment-form-card">
     {% if form.non_field_errors %}
       <div class="stitch-error-banner" role="alert">
-        {% for error in form.non_field_errors %}
-          <p>{{ error }}</p>
-        {% endfor %}
+        {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
       </div>
     {% endif %}
 
-    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
-      {% for field in form %}
+    <section class="appointment-section" aria-labelledby="patient-section-title">
+      <div class="appointment-section-heading">
+        <span class="appointment-step">01</span>
         <div>
-          <label for="{{ field.id_for_label }}" class="field-label" style="display: block; margin-bottom: 0.35rem;">
-            {{ field.label }} {% if field.field.required %}<span class="required-star">*</span>{% endif %}
-          </label>
-          <div class="field-input-box">
-            {{ field }}
-          </div>
-          {% if field.errors %}
-            <div class="field-err-msg">{{ field.errors.0 }}</div>
-          {% elif field.help_text %}
-            <span class="field-hint">{{ field.help_text }}</span>
-          {% endif %}
+          <h2 id="patient-section-title">Patient</h2>
+          <p>Choose an active patient from the master patient index.</p>
         </div>
-      {% endfor %}
-    </div>
+        <span class="section-state" data-state-for="id_patient">Required</span>
+      </div>
+      <div class="appointment-field appointment-field-full">
+        <label for="{{ form.patient.id_for_label }}">Registered patient <span aria-hidden="true">*</span></label>
+        <div class="appointment-input-shell">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="7" r="4"/><path d="M2 21a7 7 0 0 1 14 0M19 8v6M16 11h6"/></svg>
+          {{ form.patient }}
+        </div>
+        {% if form.patient.errors %}<span class="field-err-msg">{{ form.patient.errors.0 }}</span>{% else %}<span class="appointment-field-help">Search by patient name or medical record number.</span>{% endif %}
+      </div>
+    </section>
 
-    <div class="intake-actions-toolbar" style="margin-top: 2rem;">
-      <a href="{% url 'appointment_list' %}" class="btn-stitch-secondary">Cancel</a>
-      <button type="submit" class="btn-stitch-primary" style="padding: 0.75rem 2rem;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
-        {% if creating %}Book appointment{% else %}Save schedule{% endif %}
-      </button>
+    <section class="appointment-section" aria-labelledby="care-section-title">
+      <div class="appointment-section-heading">
+        <span class="appointment-step">02</span>
+        <div>
+          <h2 id="care-section-title">Care assignment</h2>
+          <p>Select the attending doctor and purpose of visit.</p>
+        </div>
+        <span class="section-state" data-state-group="id_doctor,id_visit_type">Required</span>
+      </div>
+      <div class="appointment-fields-grid">
+        <div class="appointment-field">
+          <label for="{{ form.doctor.id_for_label }}">Attending doctor <span aria-hidden="true">*</span></label>
+          <div class="appointment-input-shell">
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12h6M12 9v6"/><circle cx="12" cy="12" r="9"/></svg>
+            {{ form.doctor }}
+          </div>
+          {% if form.doctor.errors %}<span class="field-err-msg">{{ form.doctor.errors.0 }}</span>{% else %}<span class="appointment-field-help">Only active doctors are shown.</span>{% endif %}
+        </div>
+        <div class="appointment-field">
+          <label for="{{ form.visit_type.id_for_label }}">Visit type <span aria-hidden="true">*</span></label>
+          <div class="appointment-input-shell">
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5V4.8A1.8 1.8 0 0 1 5.8 3H18v18H5.8A1.8 1.8 0 0 1 4 19.2c0-1 .8-1.7 1.8-1.7H18"/><path d="M9 7h5"/></svg>
+            {{ form.visit_type }}
+          </div>
+          {% if form.visit_type.errors %}<span class="field-err-msg">{{ form.visit_type.errors.0 }}</span>{% else %}<span class="appointment-field-help">Determines the consultation workflow.</span>{% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section class="appointment-section" aria-labelledby="schedule-section-title">
+      <div class="appointment-section-heading">
+        <span class="appointment-step">03</span>
+        <div>
+          <h2 id="schedule-section-title">Schedule</h2>
+          <p>Set the local consultation date and start time.</p>
+        </div>
+        <span class="section-state" data-state-for="id_scheduled_at">Required</span>
+      </div>
+      <div class="appointment-field appointment-field-full">
+        <label for="{{ form.scheduled_at.id_for_label }}">Appointment date and time <span aria-hidden="true">*</span></label>
+        <div class="appointment-input-shell">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M12 14v3l2 1"/></svg>
+          {{ form.scheduled_at }}
+        </div>
+        {% if form.scheduled_at.errors %}<span class="field-err-msg">{{ form.scheduled_at.errors.0 }}</span>{% else %}<span class="appointment-field-help">Doctor availability and overlapping active appointments are checked when you confirm.</span>{% endif %}
+      </div>
+    </section>
+
+    <footer class="appointment-actions">
+      <div class="appointment-save-note">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>
+        Changes are recorded in the appointment audit trail.
+      </div>
+      <div>
+        <a href="{% url 'appointment_list' %}" class="btn-stitch-secondary">Cancel</a>
+        <button type="submit" class="btn-stitch-primary appointment-submit">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>
+          {% if creating %}Confirm appointment{% else %}Save new schedule{% endif %}
+        </button>
+      </div>
+    </footer>
+  </div>
+
+  <aside class="appointment-summary-column">
+    <section class="appointment-summary-card" aria-labelledby="appointment-summary-title" aria-live="polite">
+      <div class="appointment-summary-header">
+        <div>
+          <span>Booking preview</span>
+          <h2 id="appointment-summary-title">Appointment summary</h2>
+        </div>
+        <span class="summary-status" data-summary-status>Incomplete</span>
+      </div>
+
+      <div class="appointment-summary-list">
+        <div class="summary-row" data-summary-row="patient">
+          <span class="summary-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="7" r="4"/><path d="M2 21a7 7 0 0 1 14 0"/></svg></span>
+          <div><small>Patient</small><strong data-summary="patient">Not selected</strong></div>
+        </div>
+        <div class="summary-row" data-summary-row="doctor">
+          <span class="summary-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12h6M12 9v6"/><circle cx="12" cy="12" r="9"/></svg></span>
+          <div><small>Attending doctor</small><strong data-summary="doctor">Not selected</strong></div>
+        </div>
+        <div class="summary-row" data-summary-row="visit">
+          <span class="summary-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h14v16H5zM8 8h8M8 12h5"/></svg></span>
+          <div><small>Visit type</small><strong data-summary="visit">Not selected</strong></div>
+        </div>
+        <div class="summary-row" data-summary-row="schedule">
+          <span class="summary-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg></span>
+          <div><small>Schedule</small><strong data-summary="schedule">Not selected</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="appointment-readiness-card">
+      <h3>Ready to confirm?</h3>
+      <p>Complete all three booking steps.</p>
+      <ul>
+        <li data-check="patient"><span></span>Patient selected</li>
+        <li data-check="care"><span></span>Care assignment complete</li>
+        <li data-check="schedule"><span></span>Date and time selected</li>
+      </ul>
+    </section>
+
+    <div class="appointment-assurance">
+      <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+      <p><strong>Conflict protection</strong><span>The system blocks overlapping active appointments for the same doctor.</span></p>
     </div>
-  </form>
-</div>
+  </aside>
+</form>
+
+<script>
+  (() => {
+    const form = document.getElementById('appointment-form');
+    if (!form) return;
+    const patient = document.getElementById('id_patient');
+    const doctor = document.getElementById('id_doctor');
+    const visit = document.getElementById('id_visit_type');
+    const schedule = document.getElementById('id_scheduled_at');
+
+    const selectedText = select => select?.value ? select.options[select.selectedIndex].text.trim() : '';
+    const setText = (name, value) => {
+      const target = form.querySelector(`[data-summary="${name}"]`);
+      const row = form.querySelector(`[data-summary-row="${name}"]`);
+      if (!target) return;
+      const next = value || 'Not selected';
+      if (target.textContent !== next) {
+        target.textContent = next;
+        row?.classList.remove('summary-updated');
+        requestAnimationFrame(() => row?.classList.add('summary-updated'));
+      }
+      row?.classList.toggle('complete', Boolean(value));
+    };
+    const formatSchedule = value => {
+      if (!value) return '';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+    };
+    const markCheck = (name, complete) => form.querySelector(`[data-check="${name}"]`)?.classList.toggle('complete', complete);
+    const markState = (selector, complete) => {
+      const element = form.querySelector(selector);
+      if (!element) return;
+      element.textContent = complete ? 'Complete' : 'Required';
+      element.classList.toggle('complete', complete);
+    };
+
+    const update = () => {
+      const patientText = selectedText(patient);
+      const doctorText = selectedText(doctor);
+      const visitText = selectedText(visit);
+      const scheduleText = formatSchedule(schedule?.value);
+      setText('patient', patientText);
+      setText('doctor', doctorText);
+      setText('visit', visitText);
+      setText('schedule', scheduleText);
+      const patientReady = Boolean(patientText);
+      const careReady = Boolean(doctorText && visitText);
+      const scheduleReady = Boolean(scheduleText);
+      markCheck('patient', patientReady);
+      markCheck('care', careReady);
+      markCheck('schedule', scheduleReady);
+      markState('[data-state-for="id_patient"]', patientReady);
+      markState('[data-state-group="id_doctor,id_visit_type"]', careReady);
+      markState('[data-state-for="id_scheduled_at"]', scheduleReady);
+      const ready = patientReady && careReady && scheduleReady;
+      const status = form.querySelector('[data-summary-status]');
+      status.textContent = ready ? 'Ready' : 'Incomplete';
+      status.classList.toggle('complete', ready);
+    };
+
+    [patient, doctor, visit, schedule].forEach(control => control?.addEventListener('change', update));
+    update();
+  })();
+</script>
 {% endblock %}

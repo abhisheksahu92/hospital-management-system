@@ -3,167 +3,191 @@
 {% block title %}Appointments | {{ hospital.name|default:"Vedant Hospital" }}{% endblock %}
 
 {% block content %}
-<!-- Page Header -->
-<div class="page-header">
+<header class="schedule-page-header">
   <div>
-    <h1>{% if is_doctor %}Doctor Consultations &amp; Schedule{% else %}Clinic Appointments{% endif %}</h1>
-    <p style="color: var(--color-text-muted); font-size: 0.9375rem;">Manage clinic appointments, patient triage status, and daily waiting queue.</p>
+    <span class="page-kicker">Clinical schedule</span>
+    <h1>Appointments</h1>
+    <p>{% if is_doctor %}Review today’s patient flow and continue active encounters.{% else %}Coordinate bookings, check-ins, and the live consultation queue.{% endif %}</p>
   </div>
   {% if is_reception %}
-    <a href="{% url 'appointment_create' %}" class="btn-stitch-primary">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
-      Book appointment
+    <a href="{% url 'appointment_create' %}" class="btn-stitch-primary schedule-primary-action">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      New appointment
     </a>
   {% endif %}
-</div>
+</header>
 
-<!-- Date Filter Toolbar -->
-<form method="get" class="toolbar-form" style="max-width: 460px; margin-bottom: 2rem;">
-  <label for="schedule-date" style="flex: 1;">
-    <span style="font-weight: 700; color: var(--color-secondary); font-size: 0.8125rem;">Schedule Date:</span>
-    <input id="schedule-date" name="date" type="date" value="{{ selected_day|date:'Y-m-d' }}" class="clinical-input">
-  </label>
-  <button type="submit" class="btn-stitch-primary" style="height: 44px;">Filter Day</button>
-</form>
+<section class="schedule-metrics" aria-label="Schedule summary">
+  <article>
+    <span class="schedule-metric-icon metric-blue"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg></span>
+    <div><small>Total visits</small><strong>{{ summary.total }}</strong><span>On selected day</span></div>
+  </article>
+  <article>
+    <span class="schedule-metric-icon metric-slate"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+    <div><small>Scheduled</small><strong>{{ summary.scheduled }}</strong><span>Awaiting arrival</span></div>
+  </article>
+  <article>
+    <span class="schedule-metric-icon metric-amber"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></span>
+    <div><small>Waiting</small><strong>{{ queue|length }}</strong><span>Checked in</span></div>
+  </article>
+  <article>
+    <span class="schedule-metric-icon metric-green"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></svg></span>
+    <div><small>Completed</small><strong>{{ summary.completed }}</strong><span>Consultations closed</span></div>
+  </article>
+</section>
 
-<!-- Two-Column Layout: Scheduled Visits Table (Left) + Waiting Queue (Right) -->
-<div class="intake-layout-grid" style="grid-template-columns: 1fr 340px;">
-  
-  <!-- Left Main Column: Scheduled Appointments Table -->
-  <div>
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-      <h2 style="font-size: 1.25rem; font-weight: 800; color: var(--color-secondary); margin: 0;">Scheduled Visits</h2>
-      <span class="badge badge-info">{{ appointments|length }} Bookings</span>
+<section class="schedule-date-bar">
+  <div class="schedule-date-heading">
+    <span>{% if selected_day == today %}Today{% else %}Selected day{% endif %}</span>
+    <strong>{{ selected_day|date:"l, d F Y" }}</strong>
+  </div>
+  <div class="schedule-date-controls">
+    <a href="?date={{ previous_day|date:'Y-m-d' }}" class="schedule-icon-button" aria-label="Previous day">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+    </a>
+    <form method="get" class="schedule-date-form">
+      <label for="schedule-date" class="sr-only">Choose schedule date</label>
+      <input id="schedule-date" name="date" type="date" value="{{ selected_day|date:'Y-m-d' }}">
+      <button type="submit" class="btn-stitch-secondary">View date</button>
+    </form>
+    <a href="?date={{ next_day|date:'Y-m-d' }}" class="schedule-icon-button" aria-label="Next day">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+    </a>
+  </div>
+</section>
+
+<div class="schedule-workspace">
+  <section class="schedule-table-card" aria-labelledby="scheduled-visits-title">
+    <div class="schedule-card-header">
+      <div>
+        <span class="page-kicker">Daily roster</span>
+        <h2 id="scheduled-visits-title">Scheduled visits</h2>
+      </div>
+      <span class="schedule-count">{{ appointments|length }} visit{{ appointments|length|pluralize }}</span>
     </div>
 
-    <table>
-      <thead>
-        <tr>
-          <th>Time</th>
-          <th>Patient</th>
-          <th>Doctor</th>
-          <th>Visit Type</th>
-          <th>Status</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for appointment in appointments %}
+    <div class="schedule-table-scroll">
+      <table class="schedule-table">
+        <thead>
           <tr>
-            <td>
-              <div style="font-weight: 700; color: var(--color-primary); font-size: 0.9375rem;">
-                {{ appointment.scheduled_at|date:'H:i' }}
-              </div>
-              <div style="font-size: 0.6875rem; color: var(--color-text-muted);">
-                {{ appointment.scheduled_at|date:'M d, Y' }}
-              </div>
-            </td>
-            <td>
-              <a href="{% url 'patient_detail' appointment.patient.pk %}" style="font-weight: 700; text-decoration: none; color: var(--color-secondary);">
-                {{ appointment.patient.full_name }}
-              </a>
-              <div style="font-size: 0.75rem; color: var(--color-text-muted);">ID: {{ appointment.patient.mrn }}</div>
-            </td>
-            <td>
-              <strong>Dr. {{ appointment.doctor.user.get_full_name|default:appointment.doctor.user.username }}</strong>
-              <div style="font-size: 0.6875rem; color: var(--color-text-muted);">Attending Physician</div>
-            </td>
-            <td>
-              <span class="badge badge-info">{{ appointment.visit_type.name }}</span>
-            </td>
-            <td>
-              {% if appointment.status == 'checked_in' %}
-                <span class="badge badge-warning">{{ appointment.get_status_display }}</span>
-              {% elif appointment.status == 'in_progress' %}
-                <span class="badge badge-info">{{ appointment.get_status_display }}</span>
-              {% elif appointment.status == 'completed' %}
-                <span class="badge badge-success">{{ appointment.get_status_display }}</span>
-              {% elif appointment.status == 'cancelled' or appointment.status == 'no_show' %}
-                <span class="badge badge-danger">{{ appointment.get_status_display }}</span>
-              {% else %}
-                <span class="badge">{{ appointment.get_status_display }}</span>
-              {% endif %}
-            </td>
-            <td>
-              <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
-                {% if is_reception and appointment.status == 'scheduled' %}
-                  <a href="{% url 'appointment_reschedule' appointment.pk %}" class="btn-stitch-secondary" style="padding: 0.25rem 0.65rem; font-size: 0.75rem; min-height: 28px;">Reschedule</a>
-                {% endif %}
-                {% if is_reception and appointment.status == 'scheduled' or is_reception and appointment.status == 'checked_in' %}
-                  <form method="post" action="{% url 'appointment_transition' appointment.pk %}" style="display: inline-flex; gap: 0.35rem; margin: 0;">
-                    {% csrf_token %}
-                    {% if appointment.status == 'scheduled' %}
-                      <button name="action" value="check_in" class="btn-stitch-primary" style="padding: 0.25rem 0.65rem; font-size: 0.75rem; min-height: 28px;">Check in</button>
-                    {% endif %}
-                    <button name="action" value="cancel" class="btn-stitch-danger" style="padding: 0.25rem 0.65rem; font-size: 0.75rem; min-height: 28px;" onclick="return confirm('Are you sure you want to cancel this appointment?');">Cancel</button>
-                    <button name="action" value="no_show" class="btn-stitch-secondary" style="padding: 0.25rem 0.65rem; font-size: 0.75rem; min-height: 28px; color: var(--color-danger);" onclick="return confirm('Mark this appointment as no-show?');">No-show</button>
-                  </form>
-                {% endif %}
-                {% if is_doctor and appointment.status == 'checked_in' or is_doctor and appointment.status == 'in_progress' %}
-                  <form method="post" action="{% url 'appointment_transition' appointment.pk %}" style="display: inline-flex; gap: 0.35rem; margin: 0;">
-                    {% csrf_token %}
-                    {% if appointment.status == 'checked_in' %}
-                      <button name="action" value="start" class="btn-stitch-primary" style="padding: 0.25rem 0.65rem; font-size: 0.75rem; min-height: 28px;">Start consultation</button>
-                    {% endif %}
-                    {% if appointment.status == 'in_progress' %}
-                      <button name="action" value="complete" class="btn-stitch-primary" style="background: #10b981; padding: 0.25rem 0.65rem; font-size: 0.75rem; min-height: 28px;">Complete</button>
-                    {% endif %}
-                  </form>
-                {% endif %}
-                {% if is_doctor and appointment.status == 'in_progress' %}
-                  <a href="{% url 'consultation_create' appointment.pk %}" class="btn-stitch-primary" style="padding: 0.25rem 0.65rem; font-size: 0.75rem; min-height: 28px;">Open encounter &rarr;</a>
-                {% endif %}
-              </div>
-            </td>
+            <th scope="col">Time</th>
+            <th scope="col">Patient</th>
+            <th scope="col">Care assignment</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="schedule-actions-heading">Actions</th>
           </tr>
-        {% empty %}
-          <tr>
-            <td colspan="6" style="text-align: center; color: var(--color-text-muted); padding: 3rem 1.5rem;">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin-bottom: 0.75rem;"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
-              <div>No appointments scheduled for this date.</div>
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+        </thead>
+        <tbody>
+          {% for appointment in appointments %}
+            <tr class="schedule-row status-{{ appointment.status }}">
+              <td class="schedule-time-cell">
+                <strong>{{ appointment.scheduled_at|date:'H:i' }}</strong>
+                <span>{{ appointment.scheduled_at|date:'A' }}</span>
+              </td>
+              <td>
+                <a href="{% url 'patient_detail' appointment.patient.pk %}" class="schedule-patient">
+                  <span class="schedule-avatar">{{ appointment.patient.full_name|first|upper }}</span>
+                  <span><strong>{{ appointment.patient.full_name }}</strong><small>{{ appointment.patient.mrn }}</small></span>
+                </a>
+              </td>
+              <td>
+                <div class="schedule-care">
+                  <strong>Dr. {{ appointment.doctor.user.get_full_name|default:appointment.doctor.user.username }}</strong>
+                  <span>{{ appointment.visit_type.name }}</span>
+                </div>
+              </td>
+              <td>
+                <span class="clinical-status status-{{ appointment.status }}"><i></i>{{ appointment.get_status_display }}</span>
+              </td>
+              <td>
+                <div class="schedule-actions">
+                  {% if is_reception and appointment.status == 'scheduled' %}
+                    <form method="post" action="{% url 'appointment_transition' appointment.pk %}">
+                      {% csrf_token %}
+                      <button name="action" value="check_in" class="row-action-primary">Check in</button>
+                    </form>
+                    <a href="{% url 'appointment_reschedule' appointment.pk %}" class="row-action-secondary">Reschedule</a>
+                  {% endif %}
+                  {% if is_reception and appointment.status == 'scheduled' or is_reception and appointment.status == 'checked_in' %}
+                    <details class="row-more-menu">
+                      <summary aria-label="More actions">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+                      </summary>
+                      <div>
+                        <form method="post" action="{% url 'appointment_transition' appointment.pk %}">
+                          {% csrf_token %}
+                          <button name="action" value="no_show" onclick="return confirm('Mark this appointment as no-show?');">Mark no-show</button>
+                          <button name="action" value="cancel" class="danger" onclick="return confirm('Cancel this appointment?');">Cancel appointment</button>
+                        </form>
+                      </div>
+                    </details>
+                  {% endif %}
+                  {% if is_doctor and appointment.status == 'checked_in' %}
+                    <form method="post" action="{% url 'appointment_transition' appointment.pk %}">
+                      {% csrf_token %}
+                      <button name="action" value="start" class="row-action-primary">Start consultation</button>
+                    </form>
+                  {% endif %}
+                  {% if is_doctor and appointment.status == 'in_progress' %}
+                    <a href="{% url 'consultation_create' appointment.pk %}" class="row-action-primary">Open encounter</a>
+                    <form method="post" action="{% url 'appointment_transition' appointment.pk %}">
+                      {% csrf_token %}
+                      <button name="action" value="complete" class="row-action-success">Complete</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="5">
+                <div class="schedule-empty-state">
+                  <span><svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg></span>
+                  <strong>No appointments on this day</strong>
+                  <p>Choose another date{% if is_reception %} or create a new appointment{% endif %}.</p>
+                  {% if is_reception %}<a href="{% url 'appointment_create' %}" class="btn-stitch-secondary">New appointment</a>{% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
 
-  <!-- Right Sidebar: Live Triage Waiting Queue Card -->
-  <aside>
-    <div class="stitch-panel">
-      <div class="stitch-panel-header">
+  <aside class="queue-card" aria-label="Waiting queue" aria-live="polite">
+    <div class="queue-card-header">
+      <div>
+        <span class="queue-live"><i></i>Live queue</span>
         <h2>Waiting queue</h2>
-        <span class="badge badge-warning">{{ queue|length }} Waiting</span>
       </div>
-      <p style="color: var(--color-text-muted); font-size: 0.8125rem; margin-bottom: 1.25rem;">
-        Checked-in patients waiting for attending physician triage.
-      </p>
+      <span class="queue-count">{{ queue|length }}</span>
+    </div>
+    <p class="queue-description">Checked-in patients awaiting the attending doctor.</p>
 
-      <ol style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.75rem;">
-        {% for appointment in queue %}
-          <li style="padding: 0.75rem; background: var(--color-surface-container); border: 1px solid var(--color-border); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: space-between;">
-            <div>
-              <div style="font-weight: 700; color: var(--color-secondary); font-size: 0.875rem;">
-                {{ appointment.patient.full_name }}
-              </div>
-              <div style="font-size: 0.75rem; color: var(--color-text-muted);">
-                {{ appointment.patient.mrn }} &bull; Dr. {{ appointment.doctor.user.get_full_name|default:appointment.doctor.user.username }}
-              </div>
-            </div>
-            <span class="badge badge-warning" style="font-size: 0.6875rem;">Triage</span>
-          </li>
-        {% empty %}
-          <li style="text-align: center; color: var(--color-text-muted); padding: 2rem 1rem; font-size: 0.875rem;">
-            No checked-in patients waiting in queue.
-          </li>
-        {% endfor %}
-      </ol>
+    <ol class="queue-list">
+      {% for appointment in queue %}
+        <li>
+          <span class="queue-position">{{ forloop.counter|stringformat:"02d" }}</span>
+          <div>
+            <strong>{{ appointment.patient.full_name }}</strong>
+            <small>{{ appointment.patient.mrn }} · Dr. {{ appointment.doctor.user.get_full_name|default:appointment.doctor.user.username }}</small>
+            <time datetime="{{ appointment.checked_in_at|date:'c' }}">Checked in {{ appointment.checked_in_at|date:'H:i' }} · waiting {{ appointment.checked_in_at|timesince }}</time>
+            <span>{{ appointment.visit_type.name }}</span>
+          </div>
+        </li>
+      {% empty %}
+        <li class="queue-empty">
+          <span><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></svg></span>
+          <div><strong>Queue is clear</strong><small>No patients are waiting right now.</small></div>
+        </li>
+      {% endfor %}
+    </ol>
+
+    <div class="queue-footer">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>
+      Queue order follows check-in time.
     </div>
   </aside>
-
-</div>
-
-<div class="action-links" style="margin-top: 2rem;">
-  <a href="{% url 'home' %}">&larr; Back to dashboard</a>
 </div>
 {% endblock %}

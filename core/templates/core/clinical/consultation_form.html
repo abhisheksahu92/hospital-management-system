@@ -24,6 +24,8 @@
       <h1 style="font-size: 1.5rem; font-weight: 800; color: var(--color-secondary); margin: 0;">Clinical Consultation</h1>
       <p style="color: var(--color-text-muted); font-size: 0.875rem; margin-top: 0.25rem;">
         Patient: <strong style="color: var(--color-secondary);">{{ appointment.patient.full_name }}</strong> (ID: {{ appointment.patient.mrn }})
+        {% if appointment.patient.age is not None %}&bull; <span>Age: <strong>{{ appointment.patient.age }} yrs</strong></span>{% endif %}
+        {% if appointment.patient.date_of_birth %}&bull; <span>DOB: <strong>{{ appointment.patient.date_of_birth|date:'d/m/Y' }}</strong></span>{% endif %}
       </p>
     </div>
   </div>

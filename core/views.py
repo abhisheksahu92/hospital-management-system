@@ -1,4 +1,5 @@
 from decimal import Decimal, InvalidOperation
+from datetime import timedelta
 import uuid
 
 from django.contrib import messages
@@ -748,6 +749,14 @@ def appointment_list(request):
     queue = appointments.filter(status=Appointment.Status.CHECKED_IN).order_by(
         "checked_in_at", "pk"
     )
+    summary = {
+        "total": appointments.count(),
+        "scheduled": appointments.filter(status=Appointment.Status.SCHEDULED).count(),
+        "in_progress": appointments.filter(
+            status=Appointment.Status.IN_PROGRESS
+        ).count(),
+        "completed": appointments.filter(status=Appointment.Status.COMPLETED).count(),
+    }
     return render(
         request,
         "core/appointments/list.html",
@@ -757,6 +766,10 @@ def appointment_list(request):
             ).order_by("scheduled_at", "pk"),
             "queue": queue.select_related("patient", "doctor__user", "visit_type"),
             "selected_day": selected_day,
+            "today": timezone.localdate(),
+            "previous_day": selected_day - timedelta(days=1),
+            "next_day": selected_day + timedelta(days=1),
+            "summary": summary,
             "is_reception": _has_role(request.user, "Reception"),
             "is_doctor": _has_role(request.user, "Doctor"),
         },

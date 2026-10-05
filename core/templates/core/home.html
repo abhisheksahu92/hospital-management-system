@@ -3,6 +3,7 @@
 {% block title %}{{ hospital.name|default:"Vedant Hospital" }}{% endblock %}
 
 {% block content %}
+{% if user.is_authenticated %}
 <!-- Hospital Location & Operational Banner -->
 <div class="hero-context-panel">
   <div class="hero-info">
@@ -25,13 +26,10 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>
         Register patient
       </a>
-    {% elif not user.is_authenticated %}
-      <a href="{% url 'login' %}" class="btn-stitch-primary">Staff Sign In</a>
     {% endif %}
   </div>
 </div>
 
-{% if user.is_authenticated %}
   <!-- Role-Based Real-time KPI Grids -->
   {% if is_reception %}
     <section aria-labelledby="reception-summary">
@@ -269,37 +267,73 @@
     </div>
   </div>
 
-{% else %}
-  <!-- Guest View for Vedant Hospital -->
-  <div class="stitch-kpi-grid">
-    <div class="stitch-kpi-card">
-      <div class="kpi-header"><span class="kpi-title">Outpatient Visits</span><div class="kpi-badge-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg></div></div>
-      <div class="kpi-metric">18</div>
-      <div class="kpi-footer-note"><span>Sign in to view queue</span></div>
+{% endif %}
+{% endblock %}
+
+{% block public_content %}
+<section class="public-hero">
+  <div class="public-hero-copy">
+    <div class="public-kicker"><span class="status-indicator"></span>Secure staff workspace</div>
+    <h1>Clinical operations,<br><span>clear and connected.</span></h1>
+    <p>One secure workspace for patient registration, appointments, consultations, pharmacy dispensing, and billing at {{ hospital.name|default:"Vedant Hospital" }}.</p>
+    <div class="public-actions">
+      <a href="{% url 'login' %}" class="btn-stitch-primary public-primary-action">
+        Access staff portal
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+      </a>
+      <span class="public-access-note">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        Authorized personnel only
+      </span>
     </div>
-    <div class="stitch-kpi-card">
-      <div class="kpi-header"><span class="kpi-title">Triage Waiting</span><div class="kpi-badge-icon" style="color: var(--color-tertiary);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div></div>
-      <div class="kpi-metric">4</div>
-      <div class="kpi-footer-note"><span>Avg. wait ~12 min</span></div>
-    </div>
-    <div class="stitch-kpi-card">
-      <div class="kpi-header"><span class="kpi-title">Prescriptions</span><div class="kpi-badge-icon" style="color: #f59e0b;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg></div></div>
-      <div class="kpi-metric">29</div>
-      <div class="kpi-footer-note"><span>FEFO inventory</span></div>
-    </div>
-    <div class="stitch-kpi-card">
-      <div class="kpi-header"><span class="kpi-title">Billing &amp; Cashier</span><div class="kpi-badge-icon" style="color: #8b5cf6;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg></div></div>
-      <div class="kpi-metric">&mdash;</div>
-      <div class="kpi-footer-note"><span>Invoices &amp; settlements</span></div>
+    <div class="public-trust-row">
+      <div><strong>Role-based</strong><span>Access controls</span></div>
+      <div><strong>Auditable</strong><span>Clinical workflows</span></div>
+      <div><strong>Available</strong><span>24×7 operations</span></div>
     </div>
   </div>
 
-  <div class="stitch-panel" style="text-align: center; padding: 4rem 1.5rem;">
-    <h2 style="font-size: 1.5rem; margin-bottom: 0.75rem;">Vedant Hospital Management Portal</h2>
-    <p style="color: var(--color-text-muted); font-size: 1rem; max-width: 520px; margin: 0 auto 1.75rem;">
-      Welcome to the clinical operations portal. Please sign in with your authorized hospital staff account to access medical records, patient appointments, and pharmacy dispensing.
-    </p>
-    <a href="{% url 'login' %}" class="btn-stitch-primary" style="padding: 0.75rem 2.25rem; font-size: 0.9375rem;">Staff Sign In</a>
+  <div class="public-visual" aria-label="Hospital operations overview">
+    <div class="visual-orbit visual-orbit-one"></div>
+    <div class="visual-orbit visual-orbit-two"></div>
+    <div class="public-visual-card">
+      <div class="visual-card-header">
+        <div><span class="visual-eyebrow">Operations overview</span><strong>Today at Vedant</strong></div>
+        <span class="visual-live"><span class="status-indicator"></span>Live</span>
+      </div>
+      <div class="visual-flow">
+        <div class="visual-flow-item active">
+          <span class="flow-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M16 11h6"/></svg></span>
+          <span><strong>Patient intake</strong><small>Verified registration</small></span><em>01</em>
+        </div>
+        <div class="visual-connector"></div>
+        <div class="visual-flow-item">
+          <span class="flow-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5V4.8A1.8 1.8 0 0 1 5.8 3H18v18H5.8A1.8 1.8 0 0 1 4 19.2c0-1 .8-1.7 1.8-1.7H18"/><path d="M9 7h5"/></svg></span>
+          <span><strong>Clinical encounter</strong><small>Consultation &amp; orders</small></span><em>02</em>
+        </div>
+        <div class="visual-connector"></div>
+        <div class="visual-flow-item">
+          <span class="flow-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2h9l3 3v17l-3-2-3 2-3-2-3 2V2Z"/><path d="M9 9h6M9 13h6"/></svg></span>
+          <span><strong>Pharmacy &amp; billing</strong><small>Controlled fulfilment</small></span><em>03</em>
+        </div>
+      </div>
+      <div class="visual-card-footer">
+        <span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg> Protected clinical workspace</span>
+        <span>Lucknow, UP</span>
+      </div>
+    </div>
   </div>
-{% endif %}
+</section>
+
+<section class="public-capabilities" aria-labelledby="capabilities-title">
+  <div class="section-heading">
+    <span>Connected care delivery</span>
+    <h2 id="capabilities-title">Built around the hospital workflow</h2>
+  </div>
+  <div class="capability-grid">
+    <article><span>01</span><h3>Patient administration</h3><p>Maintain a reliable master patient index with guided registration and clear longitudinal records.</p></article>
+    <article><span>02</span><h3>Clinical coordination</h3><p>Move appointments through check-in, consultation, prescription, and follow-up without losing context.</p></article>
+    <article><span>03</span><h3>Revenue operations</h3><p>Keep invoices, payments, adjustments, pharmacy sales, and audit history aligned in one system.</p></article>
+  </div>
+</section>
 {% endblock %}

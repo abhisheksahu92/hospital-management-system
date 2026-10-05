@@ -98,7 +98,11 @@ class AppointmentForm(forms.ModelForm):
         fields = ("patient", "doctor", "visit_type", "scheduled_at")
         widgets = {
             "scheduled_at": forms.DateTimeInput(
-                format="%Y-%m-%dT%H:%M", attrs={"type": "datetime-local"}
+                format="%Y-%m-%dT%H:%M",
+                attrs={
+                    "type": "datetime-local",
+                    "class": "appointment-control",
+                },
             )
         }
 
@@ -115,6 +119,13 @@ class AppointmentForm(forms.ModelForm):
             .distinct()
         )
         self.fields["visit_type"].queryset = VisitType.objects.filter(is_active=True)
+        self.fields["patient"].empty_label = "Select a registered patient"
+        self.fields["doctor"].empty_label = "Select an attending doctor"
+        self.fields["visit_type"].empty_label = "Select a visit type"
+        for field_name in ("patient", "doctor", "visit_type"):
+            self.fields[field_name].widget.attrs.update(
+                {"class": "appointment-control"}
+            )
 
     def clean(self):
         cleaned_data = super().clean()

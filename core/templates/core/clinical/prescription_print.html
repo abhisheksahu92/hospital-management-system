@@ -128,7 +128,7 @@
         </div>
         <div style="text-align: right;">
           <div style="font-size: 1.15rem; font-weight: 800; color: #0284c7;">{{ prescription.number }}</div>
-          <div style="font-size: 0.75rem; color: #64748b;">Issued: {{ prescription.issued_at|date:'Y-m-d H:i' }}</div>
+          <div style="font-size: 0.75rem; color: #64748b;">Issued: {{ prescription.issued_at|date:'d/m/Y H:i' }}</div>
         </div>
       </div>
 
@@ -136,8 +136,12 @@
       <div class="rx-meta-grid">
         <div><strong>Patient:</strong> {{ prescription.patient.full_name }}</div>
         <div><strong>Patient ID (MRN):</strong> {{ prescription.patient.mrn }}</div>
+        <div>
+          <strong>Age / DOB:</strong>
+          {% if prescription.patient.age is not None %}{{ prescription.patient.age }} yrs{% endif %}
+          {% if prescription.patient.date_of_birth %}({{ prescription.patient.date_of_birth|date:'d/m/Y' }}){% elif prescription.patient.age is None %}Not recorded{% endif %}
+        </div>
         <div><strong>Attending Doctor:</strong> Dr. {{ prescription.doctor.user.get_full_name|default:prescription.doctor.user.username }}</div>
-        <div><strong>Department:</strong> {{ prescription.doctor.department.name|default:"General Medicine / OPD" }}</div>
         <div style="grid-column: 1 / -1; color: #991b1b;">
           <strong>Allergy/Safety Information:</strong> {{ prescription.patient.allergy_safety_notes|default:"No safety information recorded" }}
         </div>

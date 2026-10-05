@@ -34,6 +34,10 @@ class StaffProfile(TimestampedModel):
     )
     job_title = models.CharField(max_length=120, blank=True)
 
+    def __str__(self):
+        display_name = self.user.get_full_name() or self.user.get_username()
+        return f"{display_name} · {self.employee_id}"
+
 
 class HospitalSettings(TimestampedModel):
     id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
@@ -66,6 +70,9 @@ class VisitType(TimestampedModel):
     code = models.CharField(max_length=32, unique=True)
     name = models.CharField(max_length=120, unique=True)
     is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name
 
 
 class Service(TimestampedModel):
@@ -123,6 +130,9 @@ class Patient(TimestampedModel):
     emergency_contact_phone = models.CharField(max_length=32, blank=True)
     allergy_safety_notes = models.TextField(blank=True)
     archived_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.full_name} · {self.mrn}"
 
     @property
     def age(self):

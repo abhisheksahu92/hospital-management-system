@@ -1,0 +1,51 @@
+{% extends "core/base.html" %}
+
+{% block title %}404 Page Not Found - {{ hospital.name|default:"Vedant Hospital" }}{% endblock %}
+
+{% block content %}
+<div class="stitch-error-container" style="max-width: 640px; margin: 3rem auto; text-align: center; padding: 2.5rem; background: var(--color-surface); border-radius: var(--radius-xl); border: 1px solid var(--color-border); box-shadow: var(--shadow-sm);">
+  <div style="width: 64px; height: 64px; border-radius: 50%; background: #e0f2fe; color: var(--color-primary); display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;">
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"/>
+      <path d="M12 8v4M12 16h.01"/>
+    </svg>
+  </div>
+
+  <span class="badge badge-info" style="margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;">HTTP 404 Not Found</span>
+  <h1 style="font-size: 1.75rem; font-weight: 800; color: var(--color-secondary); margin-bottom: 0.75rem;">Record or Page Not Found</h1>
+  <p style="color: var(--color-text-muted); font-size: 0.9375rem; line-height: 1.6; margin-bottom: 2rem;">
+    The requested clinical page, patient identifier, or resource could not be found or may have been archived.
+  </p>
+
+  <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
+    <a href="{% url 'home' %}" class="btn-stitch-primary" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.625rem 1.25rem;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Return to Dashboard
+    </a>
+  </div>
+</div>
+{% endblock %}
+
+{% block public_content %}
+<div class="stitch-error-container" style="max-width: 580px; margin: 4rem auto; text-align: center; padding: 3rem 2rem; background: var(--color-surface); border-radius: var(--radius-xl); border: 1px solid var(--color-border); box-shadow: var(--shadow-md);">
+  <div style="width: 64px; height: 64px; border-radius: 50%; background: #e0f2fe; color: var(--color-primary); display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem;">
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"/>
+      <path d="M12 8v4M12 16h.01"/>
+    </svg>
+  </div>
+
+  <span class="badge badge-info" style="margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;">HTTP 404 Not Found</span>
+  <h1 style="font-size: 1.75rem; font-weight: 800; color: var(--color-secondary); margin-bottom: 0.75rem;">Page Not Found</h1>
+  <p style="color: var(--color-text-muted); font-size: 0.9375rem; line-height: 1.6; margin-bottom: 2rem;">
+    The link you followed may be expired or the address is incorrect.
+  </p>
+
+  <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
+    <a href="{% url 'home' %}" class="btn-stitch-primary" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.625rem 1.25rem;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Hospital Home
+    </a>
+  </div>
+</div>
+{% endblock %}

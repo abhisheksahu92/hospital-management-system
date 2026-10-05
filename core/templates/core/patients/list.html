@@ -3,53 +3,106 @@
 {% block title %}Patients | {{ hospital.name|default:"Hospital Management System" }}{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<header class="patient-directory-header">
   <div>
+    <span class="page-kicker">Patient administration</span>
     <h1>Patients</h1>
-    <p style="color: var(--color-text-muted); font-size: 0.9375rem;">Manage patient records and demographics.</p>
+    <p>Find verified records, review demographics, and continue the patient journey.</p>
   </div>
   {% if can_register %}
-    <a href="{% url 'patient_create' %}" class="btn">Register patient</a>
+    <a href="{% url 'patient_create' %}" class="btn-stitch-primary patient-register-action">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      Register patient
+    </a>
   {% endif %}
-</div>
+</header>
 
-<form method="get" role="search" class="toolbar-form">
-  <label for="patient-query">
-    <span style="white-space: nowrap;">Search records:</span>
-    <input id="patient-query" name="q" value="{{ query }}" type="search" placeholder="Search by patient ID, name, or phone...">
-  </label>
-  <button type="submit">Search</button>
-  {% if query %}
-    <a href="{% url 'patient_list' %}" class="btn btn-secondary">Clear</a>
-  {% endif %}
-</form>
+<section class="patient-search-card" aria-labelledby="patient-search-title">
+  <div class="patient-search-heading">
+    <span class="patient-search-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+    </span>
+    <div>
+      <h2 id="patient-search-title">Search patient records</h2>
+      <p>Use a patient ID, full name, or phone number.</p>
+    </div>
+  </div>
+  <form method="get" role="search" class="patient-search-form">
+    <label for="patient-query" class="sr-only">Search patient records</label>
+    <div class="patient-search-input">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+      <input id="patient-query" name="q" value="{{ query }}" type="search" placeholder="Search by patient ID, name, or phone..." autocomplete="off">
+    </div>
+    <button type="submit" class="btn-stitch-primary">Search</button>
+    {% if query %}
+      <a href="{% url 'patient_list' %}" class="btn-stitch-secondary">Clear</a>
+    {% endif %}
+  </form>
+</section>
 
-<table>
-  <thead>
-    <tr>
-      <th>Patient ID</th>
-      <th>Full Name</th>
-      <th>Date of Birth</th>
-      <th>Phone</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for patient in patients %}
-      <tr>
-        <td><strong><a href="{% url 'patient_detail' patient.pk %}">{{ patient.mrn }}</a></strong></td>
-        <td>{{ patient.full_name }}</td>
-        <td>{{ patient.date_of_birth|default:"Not recorded" }}</td>
-        <td>{{ patient.phone|default:"Not recorded" }}</td>
-      </tr>
-    {% empty %}
-      <tr>
-        <td colspan="4" style="text-align: center; color: var(--color-text-muted); padding: 2rem;">No matching patients found.</td>
-      </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<section class="patient-directory-card" aria-labelledby="patient-directory-title">
+  <div class="patient-directory-card-header">
+    <div>
+      <span class="page-kicker">Patient directory</span>
+      <h2 id="patient-directory-title">{% if query %}Search results{% else %}All accessible records{% endif %}</h2>
+    </div>
+    <span class="patient-result-count">{{ patients|length }} record{{ patients|length|pluralize }}</span>
+  </div>
 
-<div class="action-links">
-  <a href="{% url 'home' %}">&larr; Back to dashboard</a>
-</div>
+  <div class="patient-table-scroll">
+    <table class="patient-directory-table">
+      <thead>
+        <tr>
+          <th scope="col">Patient</th>
+          <th scope="col">Patient ID</th>
+          <th scope="col">Age / Date of birth</th>
+          <th scope="col">Contact</th>
+          <th scope="col" class="patient-action-heading">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for patient in patients %}
+          <tr>
+            <td>
+              <a href="{% url 'patient_detail' patient.pk %}" class="patient-identity-link">
+                <span class="patient-directory-avatar">{{ patient.full_name|first|upper }}</span>
+                <span><strong>{{ patient.full_name }}</strong><small>Patient record</small></span>
+              </a>
+            </td>
+            <td><span class="patient-mrn">{{ patient.mrn }}</span></td>
+            <td>
+              <span class="patient-cell-stack">
+                <strong>{% if patient.age is not None %}{{ patient.age }} years{% else %}Age not recorded{% endif %}</strong>
+                <small>{{ patient.date_of_birth|date:"d M Y"|default:"Date of birth not recorded" }}</small>
+              </span>
+            </td>
+            <td>
+              <span class="patient-cell-stack">
+                <strong>{{ patient.phone|default:"Phone not recorded" }}</strong>
+                <small>{{ patient.email|default:"Email not recorded" }}</small>
+              </span>
+            </td>
+            <td class="patient-action-cell">
+              <a href="{% url 'patient_detail' patient.pk %}" class="patient-open-record">
+                Open record
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+              </a>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="5">
+              <div class="patient-empty-state">
+                <span aria-hidden="true"><svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></span>
+                <strong>No matching patients found</strong>
+                <p>{% if query %}Try another patient ID, name, or phone number.{% else %}Patient records will appear here after registration.{% endif %}</p>
+                {% if query %}<a href="{% url 'patient_list' %}" class="btn-stitch-secondary">Clear search</a>{% endif %}
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
 {% endblock %}
