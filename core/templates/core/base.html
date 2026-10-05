@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#075985">
-    <title>{% block title %}{{ hospital.name|default:"Vedant Hospital" }}{% endblock %}</title>
+    <title>{% block title %}{% if hospital.name and hospital.name != 'Hospital name not configured' %}{{ hospital.name }}{% else %}Vedant Hospital{% endif %}{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
@@ -21,7 +21,7 @@
               <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
             </span>
             <span class="app-brand-copy">
-              <strong>{{ hospital.name|default:"Vedant Hospital" }}</strong>
+              <strong>{% if hospital.name and hospital.name != 'Hospital name not configured' %}{{ hospital.name }}{% else %}Vedant Hospital{% endif %}</strong>
               <small>Clinical Operations</small>
             </span>
           </a>
@@ -126,13 +126,13 @@
       <header class="public-header">
         <a href="{% url 'home' %}" class="public-brand">
           <span class="app-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></span>
-          <span><strong>{{ hospital.name|default:"Vedant Hospital" }}</strong><small>Hospital Management System</small></span>
+          <span><strong>{% if hospital.name and hospital.name != 'Hospital name not configured' %}{{ hospital.name }}{% else %}Vedant Hospital{% endif %}</strong><small>Hospital Management System</small></span>
         </a>
         <a href="{% url 'login' %}" class="btn-stitch-primary">Staff sign in</a>
       </header>
       <main class="public-main">{% block public_content %}{% endblock %}</main>
       <footer class="public-footer">
-        <span>&copy; {% now "Y" %} {{ hospital.name|default:"Vedant Hospital" }}</span>
+        <span>&copy; {% now "Y" %} {% if hospital.name and hospital.name != 'Hospital name not configured' %}{{ hospital.name }}{% else %}Vedant Hospital{% endif %}</span>
         <span>Hardoi Road, Rajajipuram, Lucknow</span>
         <span>Emergency: <strong>102</strong></span>
       </footer>

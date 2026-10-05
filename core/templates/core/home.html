@@ -275,7 +275,7 @@
   <div class="public-hero-copy">
     <div class="public-kicker"><span class="status-indicator"></span>Secure staff workspace</div>
     <h1>Clinical operations,<br><span>clear and connected.</span></h1>
-    <p>One secure workspace for patient registration, appointments, consultations, pharmacy dispensing, and billing at {{ hospital.name|default:"Vedant Hospital" }}.</p>
+    <p>One secure workspace for patient registration, appointments, consultations, pharmacy dispensing, and billing at {% if hospital.name and hospital.name != 'Hospital name not configured' %}{{ hospital.name }}{% else %}Vedant Hospital{% endif %}.</p>
     <div class="public-actions">
       <a href="{% url 'login' %}" class="btn-stitch-primary public-primary-action">
         Access staff portal
