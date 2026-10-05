@@ -200,24 +200,60 @@
               {% endif %}
             </div>
 
-            <!-- Date of Birth -->
+            <!-- Date of Birth OR Age Selector -->
             <div class="intake-field-col-half">
-              <label for="id_date_of_birth" class="field-label">
-                Date of Birth <span class="required-star">*</span>
-              </label>
-              <div class="field-input-box">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                <label class="field-label" style="margin-bottom: 0;">
+                  Patient Age / DOB <span class="required-star">*</span>
+                </label>
+                <!-- Switch Mode Toggle (DOB vs Age) -->
+                <div style="display: inline-flex; background: #e2e8f0; padding: 2px; border-radius: 9999px; font-size: 0.6875rem; font-weight: 700;">
+                  <button type="button" id="tab-btn-dob" onclick="selectAgeMode('dob')" style="all: unset; padding: 2px 10px; border-radius: 9999px; background: #ffffff; color: var(--color-primary); box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.15s ease;">
+                    Date of Birth
+                  </button>
+                  <button type="button" id="tab-btn-age" onclick="selectAgeMode('age')" style="all: unset; padding: 2px 10px; border-radius: 9999px; color: #64748b; cursor: pointer; transition: all 0.15s ease;">
+                    Age (Years)
+                  </button>
+                </div>
+              </div>
+
+              <!-- Option A: Date of Birth Input -->
+              <div id="dob-input-container" class="field-input-box">
                 <input 
                   type="date" 
                   name="date_of_birth" 
                   id="id_date_of_birth" 
                   value="{{ form.date_of_birth.value|date:'Y-m-d'|default_if_none:'' }}"
                   class="clinical-input {% if form.date_of_birth.errors %}input-err{% endif %}"
+                  onchange="syncAgeFromDob()"
                 >
               </div>
+
+              <!-- Option B: Age in Years Input -->
+              <div id="age-input-container" class="field-input-box" style="display: none;">
+                <div style="position: relative; display: flex; align-items: center;">
+                  <input 
+                    type="number" 
+                    name="age" 
+                    id="id_age" 
+                    min="0" 
+                    max="130" 
+                    placeholder="e.g. 35"
+                    value="{{ form.age.value|default_if_none:'' }}"
+                    class="clinical-input"
+                    oninput="syncDobFromAge()"
+                    style="padding-right: 4.5rem;"
+                  >
+                  <span style="position: absolute; right: 0.75rem; font-size: 0.8125rem; font-weight: 600; color: #64748b; pointer-events: none;">Years old</span>
+                </div>
+              </div>
+
               {% if form.date_of_birth.errors %}
                 <div class="field-err-msg">{{ form.date_of_birth.errors.0 }}</div>
+              {% elif form.age.errors %}
+                <div class="field-err-msg">{{ form.age.errors.0 }}</div>
               {% else %}
-                <span class="field-hint">Used for pediatric &amp; geriatric dosage thresholds.</span>
+                <span class="field-hint" id="age-dob-hint">Enter birth date or switch to Age in years. Used for pediatric &amp; geriatric dosage thresholds.</span>
               {% endif %}
             </div>
 
@@ -226,10 +262,10 @@
               <label class="field-label">Clinical Cohort &amp; OPD Type</label>
               <div class="cohort-preview-box">
                 <div class="cohort-text">
-                  <strong>General OPD Patient</strong>
-                  <span>Standard Adult / Pediatric Triage</span>
+                  <strong id="cohort-display-title">General Adult OPD</strong>
+                  <span id="cohort-display-sub">Standard Adult Protocol (18–59 Yrs)</span>
                 </div>
-                <span class="badge badge-info">Standard Encounter</span>
+                <span class="badge badge-info" id="cohort-display-badge">Standard Encounter</span>
               </div>
             </div>
           </div>
@@ -432,6 +468,114 @@
 <script>
   let currentIntakeStep = 1;
   const totalIntakeSteps = 3;
+  let activeAgeMode = 'dob';
+
+  function selectAgeMode(mode) {
+    activeAgeMode = mode;
+    const btnDob = document.getElementById('tab-btn-dob');
+    const btnAge = document.getElementById('tab-btn-age');
+    const dobContainer = document.getElementById('dob-input-container');
+    const ageContainer = document.getElementById('age-input-container');
+    const hint = document.getElementById('age-dob-hint');
+
+    if (mode === 'dob') {
+      btnDob.style.background = '#ffffff';
+      btnDob.style.color = 'var(--color-primary)';
+      btnDob.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+      btnAge.style.background = 'transparent';
+      btnAge.style.color = '#64748b';
+      btnAge.style.boxShadow = 'none';
+
+      dobContainer.style.display = 'block';
+      ageContainer.style.display = 'none';
+      if (hint) hint.textContent = 'Enter exact date of birth as recorded on official Aadhaar or birth certificate.';
+      syncAgeFromDob();
+    } else {
+      btnAge.style.background = '#ffffff';
+      btnAge.style.color = 'var(--color-primary)';
+      btnAge.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+      btnDob.style.background = 'transparent';
+      btnDob.style.color = '#64748b';
+      btnDob.style.boxShadow = 'none';
+
+      ageContainer.style.display = 'block';
+      dobContainer.style.display = 'none';
+      if (hint) hint.textContent = 'Patient does not know exact DOB. Approximate birth year is automatically derived from age.';
+      syncDobFromAge();
+    }
+  }
+
+  function updateCohortDisplay(calculatedAge) {
+    const titleEl = document.getElementById('cohort-display-title');
+    const subEl = document.getElementById('cohort-display-sub');
+    const badgeEl = document.getElementById('cohort-display-badge');
+    if (!titleEl || !subEl || !badgeEl) return;
+
+    if (calculatedAge === null || calculatedAge === undefined || isNaN(calculatedAge)) {
+      titleEl.textContent = 'General OPD Patient';
+      subEl.textContent = 'Standard Adult / Pediatric Triage';
+      badgeEl.textContent = 'Standard Encounter';
+      badgeEl.className = 'badge badge-info';
+      return;
+    }
+
+    if (calculatedAge < 12) {
+      titleEl.textContent = `Pediatric Patient (${calculatedAge} Yrs)`;
+      subEl.textContent = 'Weight-adjusted dosing & Pediatric Triage';
+      badgeEl.textContent = 'Pediatric Protocol';
+      badgeEl.className = 'badge badge-warning';
+    } else if (calculatedAge >= 60) {
+      titleEl.textContent = `Geriatric Senior (${calculatedAge} Yrs)`;
+      subEl.textContent = 'Renal clearance & Senior Citizen Fast-Track';
+      badgeEl.textContent = 'Senior Care (60+)';
+      badgeEl.className = 'badge badge-success';
+    } else {
+      titleEl.textContent = `Adult OPD (${calculatedAge} Yrs)`;
+      subEl.textContent = 'Standard Adult Clinical Protocol (12–59 Yrs)';
+      badgeEl.textContent = 'Standard Adult';
+      badgeEl.className = 'badge badge-info';
+    }
+  }
+
+  function syncAgeFromDob() {
+    const dobInput = document.getElementById('id_date_of_birth');
+    const ageInput = document.getElementById('id_age');
+    if (!dobInput || !dobInput.value) {
+      if (!ageInput || !ageInput.value) updateCohortDisplay(null);
+      return;
+    }
+
+    const birthDate = new Date(dobInput.value);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    if (age >= 0 && age <= 130) {
+      if (ageInput) ageInput.value = age;
+      updateCohortDisplay(age);
+    }
+  }
+
+  function syncDobFromAge() {
+    const ageInput = document.getElementById('id_age');
+    const dobInput = document.getElementById('id_date_of_birth');
+    if (!ageInput || ageInput.value === '') {
+      if (!dobInput || !dobInput.value) updateCohortDisplay(null);
+      return;
+    }
+
+    const val = parseInt(ageInput.value, 10);
+    if (!isNaN(val) && val >= 0 && val <= 130) {
+      const today = new Date();
+      const derivedYear = today.getFullYear() - val;
+      if (dobInput) {
+        dobInput.value = `${derivedYear}-01-01`;
+      }
+      updateCohortDisplay(val);
+    }
+  }
 
   function switchIntakeStep(stepNum) {
     if (stepNum < 1 || stepNum > totalIntakeSteps) return;
@@ -443,6 +587,20 @@
         if (nameField && !nameField.value.trim()) {
           nameField.focus();
           nameField.classList.add('input-err');
+          return;
+        }
+        const dobField = document.getElementById('id_date_of_birth');
+        const ageField = document.getElementById('id_age');
+        const hasDob = dobField && dobField.value.trim();
+        const hasAge = ageField && ageField.value.trim();
+        if (!hasDob && !hasAge) {
+          if (activeAgeMode === 'dob' && dobField) {
+            dobField.focus();
+            dobField.classList.add('input-err');
+          } else if (ageField) {
+            ageField.focus();
+            ageField.classList.add('input-err');
+          }
           return;
         }
       } else if (currentIntakeStep === 2) {
@@ -540,6 +698,9 @@
     } else {
       switchIntakeStep(1);
     }
+
+    // Check initial values for DOB / Age
+    syncAgeFromDob();
   });
 </script>
 {% endblock %}

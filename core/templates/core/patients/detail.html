@@ -66,7 +66,14 @@
     <dl class="details-grid" style="box-shadow: none; border: none; padding: 0.5rem 0; margin: 0;">
       <dt>Patient ID</dt><dd><strong>{{ patient.mrn }}</strong></dd>
       <dt>Full Name</dt><dd>{{ patient.full_name }}</dd>
-      <dt>Date of birth</dt><dd>{{ patient.date_of_birth|default:"Not recorded" }}</dd>
+      <dt>Date of birth / Age</dt>
+      <dd>
+        {% if patient.date_of_birth %}
+          {{ patient.date_of_birth }} {% if patient.age is not None %}<span class="badge badge-info" style="margin-left: 0.35rem; font-size: 0.6875rem;">{{ patient.age }} yrs</span>{% endif %}
+        {% else %}
+          <span style="color: var(--color-text-muted);">Not recorded</span>
+        {% endif %}
+      </dd>
       <dt>Phone number</dt><dd>{{ patient.phone|default:"Not recorded" }}</dd>
       <dt>Email address</dt><dd>{{ patient.email|default:"Not recorded" }}</dd>
       <dt>Address</dt><dd>{{ patient.address|default:"Not recorded" }}</dd>

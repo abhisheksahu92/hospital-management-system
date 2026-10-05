@@ -1477,6 +1477,26 @@ class PatientWorkflowTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("date_of_birth", form.errors)
 
+    def test_registration_with_age_derives_date_of_birth_and_calculates_age(self):
+        form = PatientForm(
+            data={
+                "full_name": "Elderly Patient",
+                "age": 65,
+                "phone": "9839011223",
+                "address": "Lucknow",
+                "emergency_contact_name": "Son",
+                "emergency_contact_phone": "9839011224",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        patient = form.save(commit=False)
+        patient.mrn = "TEST-AGE-001"
+        patient.save()
+
+        today = timezone.localdate()
+        self.assertEqual(patient.date_of_birth.year, today.year - 65)
+        self.assertEqual(patient.age, 65)
+
     def test_doctor_can_only_open_assigned_patient_and_cannot_edit(self):
         department = Department.objects.create(code="PAT-DOC", name="Synthetic Dept")
         doctor = get_user_model().objects.create_user(

@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import models
 from django.db.models import F, Q
+from django.utils import timezone
 
 
 class TimestampedModel(models.Model):
@@ -122,6 +123,17 @@ class Patient(TimestampedModel):
     emergency_contact_phone = models.CharField(max_length=32, blank=True)
     allergy_safety_notes = models.TextField(blank=True)
     archived_at = models.DateTimeField(null=True, blank=True)
+
+    @property
+    def age(self):
+        if not self.date_of_birth:
+            return None
+        today = timezone.localdate()
+        return (
+            today.year
+            - self.date_of_birth.year
+            - ((today.month, today.day) < (self.date_of_birth.month, self.date_of_birth.day))
+        )
 
     class Meta:
         indexes = [models.Index(fields=["full_name"], name="patient_name_idx")]

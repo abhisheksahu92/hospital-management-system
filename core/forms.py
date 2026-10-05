@@ -33,6 +33,14 @@ def appointment_slot_conflicts(doctor, scheduled_at, exclude_pk=None):
 
 
 class PatientForm(forms.ModelForm):
+    age = forms.IntegerField(
+        required=False,
+        min_value=0,
+        max_value=130,
+        label="Age (Years)",
+        widget=forms.NumberInput(attrs={"placeholder": "e.g. 35", "min": "0", "max": "130"}),
+    )
+
     class Meta:
         model = Patient
         fields = (
@@ -54,6 +62,18 @@ class PatientForm(forms.ModelForm):
         if date_of_birth and date_of_birth > timezone.localdate():
             raise forms.ValidationError("Date of birth cannot be in the future.")
         return date_of_birth
+
+    def clean(self):
+        cleaned_data = super().clean()
+        dob = cleaned_data.get("date_of_birth")
+        age = cleaned_data.get("age")
+
+        # If age is entered without DOB, derive an approximate DOB (Jan 1 of birth year)
+        if not dob and age is not None:
+            today = timezone.localdate()
+            cleaned_data["date_of_birth"] = today.replace(year=today.year - age, month=1, day=1)
+
+        return cleaned_data
 
 
 class AppointmentForm(forms.ModelForm):
