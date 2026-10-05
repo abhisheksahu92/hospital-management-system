@@ -1267,3 +1267,556 @@ select.stitch-input {
   }
 }
 
+/* ==========================================================================
+   Stitch Patient Registration & Clinical Intake Styles (Vedant Hospital)
+   ========================================================================== */
+
+.intake-breadcrumb-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.breadcrumb-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.breadcrumb-nav a {
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.breadcrumb-nav a:hover {
+  text-decoration: underline;
+}
+
+.crumb-separator {
+  color: #94a3b8;
+}
+
+.crumb-current {
+  color: var(--color-secondary);
+  font-weight: 600;
+}
+
+.intake-badges-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 9999px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  font-size: 0.75rem;
+  color: var(--color-secondary);
+}
+
+.status-pill-emerald {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #065f46;
+}
+
+.status-dot-emerald {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 2px #d1fae5;
+}
+
+/* Layout Grid */
+.intake-layout-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.intake-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.stitch-card-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xs);
+}
+
+/* Stepper Card */
+.intake-stepper-card {
+  padding: 1.5rem;
+}
+
+.stepper-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.stepper-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-secondary);
+}
+
+.stepper-badge {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.stepper-sub {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-bottom: 1.25rem;
+}
+
+.intake-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.intake-step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.intake-step-item.step-active {
+  background: #f0f9ff;
+  border-color: #bae6fd;
+}
+
+.step-num-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.step-active .step-num-icon {
+  background: var(--color-primary);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.35);
+}
+
+.step-title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-secondary);
+}
+
+.step-desc {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  margin-top: 0.15rem;
+}
+
+/* Identifiers Preview Card */
+.intake-id-preview-card {
+  padding: 1.25rem;
+  background: #f8fafc;
+}
+
+.id-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.id-card-title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-secondary);
+}
+
+.mrn-display-box {
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1rem;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.mrn-code-text {
+  font-family: monospace;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--color-primary);
+  margin-bottom: 0.6rem;
+}
+
+.barcode-graphic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 38px;
+  margin-bottom: 0.4rem;
+}
+
+.bar {
+  background: #1e293b;
+  height: 100%;
+}
+
+.bar-w1 { width: 2px; }
+.bar-w2 { width: 4px; }
+.bar-w3 { width: 6px; }
+
+.barcode-subtext {
+  font-size: 0.625rem;
+  font-family: monospace;
+  color: #94a3b8;
+  letter-spacing: 0.1em;
+}
+
+.intake-meta-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.meta-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.meta-row strong {
+  color: var(--color-secondary);
+}
+
+/* Hotkeys box */
+.intake-hotkeys-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0.75rem;
+  border-radius: var(--radius-lg);
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+}
+
+.hotkey-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.hotkey-item kbd {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 0.15rem 0.4rem;
+  font-family: monospace;
+  font-weight: 700;
+  color: #334155;
+}
+
+/* Main Form Card */
+.intake-main-card {
+  padding: 2.25rem 2.5rem;
+}
+
+.form-hero-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 1.75rem;
+}
+
+.form-id-tag {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-primary);
+  margin-bottom: 0.35rem;
+}
+
+.form-main-heading {
+  font-size: 1.625rem;
+  font-weight: 800;
+  color: var(--color-secondary);
+  letter-spacing: -0.02em;
+  margin-bottom: 0.35rem;
+}
+
+.form-main-sub {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  max-width: 600px;
+  line-height: 1.5;
+}
+
+.unique-check-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 9999px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #065f46;
+}
+
+/* Clinical Fieldsets */
+.intake-fieldset {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: 1.5rem;
+  margin-bottom: 1.75rem;
+  background: #ffffff;
+}
+
+.intake-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.legend-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #e0f2fe;
+  color: #0284c7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.legend-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-secondary);
+}
+
+.legend-sub {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+}
+
+.intake-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.25rem 1.5rem;
+  margin-top: 0.75rem;
+}
+
+.intake-field-col-full {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.intake-field-col-half {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.field-label {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.clinical-input {
+  width: 100%;
+  padding: 0.75rem 1rem !important;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  border: 1.5px solid #cbd5e1;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  color: #0f172a;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.clinical-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.18);
+}
+
+.clinical-input.input-err {
+  border-color: #ef4444;
+  background: #fffafa;
+}
+
+.field-err-msg {
+  font-size: 0.75rem;
+  color: #dc2626;
+  font-weight: 500;
+}
+
+.field-hint {
+  font-size: 0.6875rem;
+  color: #94a3b8;
+}
+
+/* Phone input with custom prefix */
+.phone-input-group {
+  display: flex;
+  align-items: center;
+  border: 1.5px solid #cbd5e1;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  overflow: hidden;
+  transition: all 0.15s ease;
+}
+
+.phone-input-group:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.18);
+}
+
+.phone-prefix {
+  padding: 0.75rem 0.85rem;
+  background: #f1f5f9;
+  border-right: 1px solid #cbd5e1;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.phone-input-field {
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  flex: 1;
+}
+
+.phone-verified-tag {
+  padding: 0.35rem 0.75rem;
+  margin-right: 0.5rem;
+  border-radius: 9999px;
+  background: #ecfdf5;
+  color: #059669;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cohort-preview-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.85rem;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: var(--radius-md);
+  min-height: 44px;
+}
+
+.cohort-text {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.75rem;
+}
+
+.cohort-text strong {
+  color: var(--color-secondary);
+}
+
+.cohort-text span {
+  color: var(--color-text-muted);
+  font-size: 0.6875rem;
+}
+
+/* Consent bar */
+.consent-compliance-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius-lg);
+  margin-bottom: 2rem;
+}
+
+/* Toolbar Footer */
+.intake-actions-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+@media (max-width: 900px) {
+  .intake-layout-grid {
+    grid-template-columns: 1fr;
+  }
+  .intake-fields-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
