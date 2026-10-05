@@ -116,6 +116,7 @@ class Patient(TimestampedModel):
     full_name = models.CharField(max_length=200)
     date_of_birth = models.DateField(null=True, blank=True)
     phone = models.CharField(max_length=32, blank=True)
+    email = models.EmailField(blank=True)
     address = models.TextField(blank=True)
     emergency_contact_name = models.CharField(max_length=160, blank=True)
     emergency_contact_phone = models.CharField(max_length=32, blank=True)

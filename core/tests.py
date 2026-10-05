@@ -1372,6 +1372,7 @@ class PatientWorkflowTests(TestCase):
                 "full_name": "Synthetic Patient One",
                 "date_of_birth": "1990-01-02",
                 "phone": "5550100",
+                "email": "synthetic.patient@example.test",
                 "address": "Synthetic Address",
                 "emergency_contact_name": "Synthetic Contact",
                 "emergency_contact_phone": "5550101",
@@ -1382,6 +1383,7 @@ class PatientWorkflowTests(TestCase):
         patient = Patient.objects.get(full_name="Synthetic Patient One")
         self.assertEqual(response.status_code, 302)
         self.assertEqual(patient.mrn, "1")
+        self.assertEqual(patient.email, "synthetic.patient@example.test")
         self.assertEqual(patient.allergy_safety_notes, "")
         event = AuditEvent.objects.get(
             action="patient.created", target_id=str(patient.pk)

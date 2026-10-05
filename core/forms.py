@@ -39,11 +39,15 @@ class PatientForm(forms.ModelForm):
             "full_name",
             "date_of_birth",
             "phone",
+            "email",
             "address",
             "emergency_contact_name",
             "emergency_contact_phone",
         )
-        widgets = {"date_of_birth": forms.DateInput(attrs={"type": "date"})}
+        widgets = {
+            "date_of_birth": forms.DateInput(attrs={"type": "date"}),
+            "email": forms.EmailInput(attrs={"placeholder": "patient@example.com"}),
+        }
 
     def clean_date_of_birth(self):
         date_of_birth = self.cleaned_data.get("date_of_birth")

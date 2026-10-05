@@ -248,12 +248,12 @@
 
           <div class="intake-fields-grid">
             <!-- Primary Mobile -->
-            <div class="intake-field-col-full">
+            <div class="intake-field-col-half">
               <label for="id_phone" class="field-label">
                 Primary Mobile Phone <span class="required-star">*</span>
               </label>
               <div class="phone-input-group">
-                <span class="phone-prefix">+91 (IND)</span>
+                <span class="phone-prefix">+91</span>
                 <input 
                   type="text" 
                   name="phone" 
@@ -263,12 +263,33 @@
                   value="{{ form.phone.value|default_if_none:'' }}"
                   class="clinical-input phone-input-field {% if form.phone.errors %}input-err{% endif %}"
                 >
-                <span class="phone-verified-tag">SMS &amp; e-Rx Enabled</span>
               </div>
               {% if form.phone.errors %}
                 <div class="field-err-msg">{{ form.phone.errors.0 }}</div>
               {% else %}
-                <span class="field-hint">Prescription tokens, invoice receipts, and queue updates are dispatched to this number.</span>
+                <span class="field-hint">Prescription tokens, SMS receipts &amp; queue updates.</span>
+              {% endif %}
+            </div>
+
+            <!-- Email Address -->
+            <div class="intake-field-col-half">
+              <label for="id_email" class="field-label">
+                Email Address <span style="font-weight: 400; color: var(--color-text-muted); font-size: 0.75rem;">(Optional)</span>
+              </label>
+              <div class="field-input-box">
+                <input 
+                  type="email" 
+                  name="email" 
+                  id="id_email" 
+                  placeholder="e.g. patient@example.com"
+                  value="{{ form.email.value|default_if_none:'' }}"
+                  class="clinical-input {% if form.email.errors %}input-err{% endif %}"
+                >
+              </div>
+              {% if form.email.errors %}
+                <div class="field-err-msg">{{ form.email.errors.0 }}</div>
+              {% else %}
+                <span class="field-hint">Digital consultation summary and itemized tax invoice PDF.</span>
               {% endif %}
             </div>
 
