@@ -110,16 +110,11 @@ SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
 RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "")
 EMAIL_HOST_PASSWORD = os.getenv("DJANGO_EMAIL_PASSWORD", os.getenv("RESEND_KEY", ""))
-if not DEBUG and not EMAIL_HOST_PASSWORD:
-    raise RuntimeError("Set RESEND_KEY before enabling non-debug email delivery.")
-if not DEBUG and not RESEND_FROM_EMAIL:
-    raise RuntimeError("Set RESEND_FROM_EMAIL to a verified sender before deployment.")
 
-EMAIL_BACKEND = (
-    "django.core.mail.backends.console.EmailBackend"
-    if DEBUG
-    else "django.core.mail.backends.smtp.EmailBackend"
-)
+if EMAIL_HOST_PASSWORD and RESEND_FROM_EMAIL:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 EMAIL_HOST = os.getenv("DJANGO_EMAIL_HOST", "smtp.resend.com")
 EMAIL_PORT = int(os.getenv("DJANGO_EMAIL_PORT", "465"))
 EMAIL_HOST_USER = os.getenv("DJANGO_EMAIL_USER", "resend")
