@@ -1,51 +1,47 @@
 {% extends "core/base.html" %}
 
-{% block title %}{{ hospital.name|default:"Hospital Management System" }}{% endblock %}
+{% block title %}{{ hospital.name|default:"Vedant Hospital" }}{% endblock %}
 
 {% block content %}
-<!-- Clinical Context Subheader -->
-<div class="stitch-panel" style="padding: 1.25rem 1.5rem; margin-bottom: 1.5rem;">
-  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
-    <div>
-      <div style="display: flex; align-items: center; gap: 0.75rem;">
-        <h1 style="font-size: 1.5rem; font-weight: 700; color: var(--color-secondary); margin: 0;">{{ hospital.name|default:"Hospital Management System" }}</h1>
-        <span class="badge badge-info">Outpatient Clinic</span>
-      </div>
-      <p style="color: var(--color-text-muted); font-size: 0.875rem; margin-top: 0.25rem;">
-        Real-time outpatient schedule, triage queue, and clinical operations.
-      </p>
+<!-- Hospital Location & Operational Banner -->
+<div class="hero-context-panel">
+  <div class="hero-info">
+    <h1>{{ hospital.name|default:"Vedant Hospital" }}</h1>
+    <div class="hero-location">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+      <span>Hardoi Road, Near Raj State, Kanpur Ring Road, Rajaji Puram, Lucknow-226017, UP</span>
     </div>
+  </div>
 
-    <div style="display: flex; gap: 0.75rem; align-items: center;">
-      {% if user.is_authenticated and perms.core.add_appointment %}
-        <a href="{% url 'appointment_create' %}" class="btn-stitch-secondary">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
-          Book appointment
-        </a>
-      {% endif %}
-      {% if user.is_authenticated and perms.core.add_patient %}
-        <a href="{% url 'patient_create' %}" class="btn-stitch-primary">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>
-          Register patient
-        </a>
-      {% elif not user.is_authenticated %}
-        <a href="{% url 'login' %}" class="btn-stitch-primary">Staff Sign In</a>
-      {% endif %}
-    </div>
+  <div class="hero-actions">
+    {% if user.is_authenticated and perms.core.add_appointment %}
+      <a href="{% url 'appointment_create' %}" class="btn-stitch-secondary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+        Book appointment
+      </a>
+    {% endif %}
+    {% if user.is_authenticated and perms.core.add_patient %}
+      <a href="{% url 'patient_create' %}" class="btn-stitch-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>
+        Register patient
+      </a>
+    {% elif not user.is_authenticated %}
+      <a href="{% url 'login' %}" class="btn-stitch-primary">Staff Sign In</a>
+    {% endif %}
   </div>
 </div>
 
 {% if user.is_authenticated %}
-  <!-- Stitch Role Summaries -->
+  <!-- Role-Based Real-time KPI Grids -->
   {% if is_reception %}
     <section aria-labelledby="reception-summary">
-      <h2 id="reception-summary" style="font-size: 1.125rem; font-weight: 700; margin-bottom: 1rem; color: var(--color-secondary);">Reception overview</h2>
+      <h2 id="reception-summary" style="font-size: 1.15rem; font-weight: 700; margin-bottom: 1rem; color: var(--color-secondary);">Reception overview</h2>
       <div class="stitch-kpi-grid">
         <div class="stitch-kpi-card">
           <div class="kpi-header">
             <span class="kpi-title">Today's appointments</span>
             <div class="kpi-badge-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
             </div>
           </div>
           <div class="kpi-metric">{{ reception_today_appointments }}</div>
@@ -56,7 +52,7 @@
           <div class="kpi-header">
             <span class="kpi-title">Waiting queue</span>
             <div class="kpi-badge-icon" style="color: var(--color-tertiary);">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
             </div>
           </div>
           <div class="kpi-metric">{{ reception_waiting_queue }}</div>
@@ -67,7 +63,7 @@
           <div class="kpi-header">
             <span class="kpi-title">Today's collections</span>
             <div class="kpi-badge-icon" style="color: #8b5cf6;">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
             </div>
           </div>
           <div class="kpi-metric">{{ reception_today_collections }}</div>
@@ -79,24 +75,24 @@
 
   {% if is_doctor %}
     <section aria-labelledby="doctor-summary">
-      <h2 id="doctor-summary" style="font-size: 1.125rem; font-weight: 700; margin-bottom: 1rem; color: var(--color-secondary);">Doctor overview</h2>
+      <h2 id="doctor-summary" style="font-size: 1.15rem; font-weight: 700; margin-bottom: 1rem; color: var(--color-secondary);">Doctor overview</h2>
       <div class="stitch-kpi-grid">
         <div class="stitch-kpi-card">
           <div class="kpi-header">
             <span class="kpi-title">Today's appointments</span>
             <div class="kpi-badge-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
             </div>
           </div>
           <div class="kpi-metric">{{ doctor_today_appointments }}</div>
-          <div class="kpi-footer-note"><span>Attending schedule</span><span class="badge badge-info">Today</span></div>
+          <div class="kpi-footer-note"><span>Attending appointments</span><span class="badge badge-info">Today</span></div>
         </div>
 
         <div class="stitch-kpi-card">
           <div class="kpi-header">
             <span class="kpi-title">Waiting patients</span>
             <div class="kpi-badge-icon" style="color: var(--color-tertiary);">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
             </div>
           </div>
           <div class="kpi-metric">{{ doctor_waiting_patients }}</div>
@@ -108,13 +104,13 @@
 
   {% if is_pharmacy %}
     <section aria-labelledby="pharmacy-summary">
-      <h2 id="pharmacy-summary" style="font-size: 1.125rem; font-weight: 700; margin-bottom: 1rem; color: var(--color-secondary);">Pharmacy overview</h2>
+      <h2 id="pharmacy-summary" style="font-size: 1.15rem; font-weight: 700; margin-bottom: 1rem; color: var(--color-secondary);">Pharmacy overview</h2>
       <div class="stitch-kpi-grid">
         <div class="stitch-kpi-card">
           <div class="kpi-header">
             <span class="kpi-title">Issued prescriptions</span>
             <div class="kpi-badge-icon" style="color: #f59e0b;">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
             </div>
           </div>
           <div class="kpi-metric">{{ pharmacy_issued_prescriptions }}</div>
@@ -125,7 +121,7 @@
           <div class="kpi-header">
             <span class="kpi-title">Low stock batches</span>
             <div class="kpi-badge-icon" style="color: var(--color-danger);">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
             </div>
           </div>
           <div class="kpi-metric">{{ pharmacy_low_stock_batches }}</div>
@@ -136,7 +132,7 @@
           <div class="kpi-header">
             <span class="kpi-title">Expired batches</span>
             <div class="kpi-badge-icon" style="color: var(--color-danger);">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
             </div>
           </div>
           <div class="kpi-metric">{{ pharmacy_expired_batches }}</div>
@@ -148,13 +144,13 @@
 
   {% if is_admin %}
     <section aria-labelledby="admin-summary">
-      <h2 id="admin-summary" style="font-size: 1.125rem; font-weight: 700; margin-bottom: 1rem; color: var(--color-secondary);">Operations overview</h2>
+      <h2 id="admin-summary" style="font-size: 1.15rem; font-weight: 700; margin-bottom: 1rem; color: var(--color-secondary);">Operations overview</h2>
       <div class="stitch-kpi-grid">
         <div class="stitch-kpi-card">
           <div class="kpi-header">
             <span class="kpi-title">Active registered patients</span>
             <div class="kpi-badge-icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             </div>
           </div>
           <div class="kpi-metric">{{ admin_total_patients }}</div>
@@ -165,7 +161,7 @@
           <div class="kpi-header">
             <span class="kpi-title">Today's collections</span>
             <div class="kpi-badge-icon" style="color: #8b5cf6;">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
             </div>
           </div>
           <div class="kpi-metric">{{ admin_today_collections }}</div>
@@ -176,7 +172,7 @@
           <div class="kpi-header">
             <span class="kpi-title">Today's refunds</span>
             <div class="kpi-badge-icon" style="color: var(--color-primary);">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
             </div>
           </div>
           <div class="kpi-metric">{{ admin_today_refunds }}</div>
@@ -187,7 +183,7 @@
           <div class="kpi-header">
             <span class="kpi-title">Unsettled invoices</span>
             <div class="kpi-badge-icon" style="color: #f59e0b;">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
             </div>
           </div>
           <div class="kpi-metric">{{ admin_unsettled_invoices }}</div>
@@ -197,26 +193,59 @@
     </section>
   {% endif %}
 
-  <!-- Stitch Two-Column Workspace -->
+  <!-- Two-Column Clinical Workspace -->
   <div class="workspace-split">
-    <!-- Left Column: Quick Navigation & Live Directory -->
+    <!-- Left Column: Department Navigations -->
     <div class="stitch-panel">
       <div class="stitch-panel-header">
-        <h2>Clinical Workspaces</h2>
+        <h2>Hospital Departments</h2>
         <span class="badge badge-success">Live & Connected</span>
       </div>
       <p style="color: var(--color-text-muted); font-size: 0.9375rem; margin-bottom: 1.5rem;">
         Direct access to patient records, daily physician consultation schedules, pharmacy dispensing queues, and billing invoices.
       </p>
-      <div class="action-links">
-        {% if perms.core.view_patient %}<a class="btn-stitch-secondary" href="{% url 'patient_list' %}">Patients Directory</a>{% endif %}
-        {% if perms.core.view_appointment %}<a class="btn-stitch-secondary" href="{% url 'appointment_list' %}">Appointments Queue</a>{% endif %}
-        {% if perms.core.view_invoice %}<a class="btn-stitch-secondary" href="{% url 'invoice_list' %}">Invoices & Billing</a>{% endif %}
-        {% if is_pharmacy %}<a class="btn-stitch-secondary" href="{% url 'pharmacy_prescription_list' %}">Pharmacy Dispensing</a>{% endif %}
+
+      <div class="quick-action-list">
+        {% if perms.core.view_patient %}
+          <a href="{% url 'patient_list' %}" class="quick-action-item">
+            <div class="action-item-left">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+              <span>Patients Directory &amp; Registration</span>
+            </div>
+            <span>&rarr;</span>
+          </a>
+        {% endif %}
+        {% if perms.core.view_appointment %}
+          <a href="{% url 'appointment_list' %}" class="quick-action-item">
+            <div class="action-item-left">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+              <span>Daily Consultations &amp; Triage Queue</span>
+            </div>
+            <span>&rarr;</span>
+          </a>
+        {% endif %}
+        {% if perms.core.view_invoice %}
+          <a href="{% url 'invoice_list' %}" class="quick-action-item">
+            <div class="action-item-left">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+              <span>Billing, Invoices &amp; Payments</span>
+            </div>
+            <span>&rarr;</span>
+          </a>
+        {% endif %}
+        {% if is_pharmacy %}
+          <a href="{% url 'pharmacy_prescription_list' %}" class="quick-action-item">
+            <div class="action-item-left">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
+              <span>Pharmacy &amp; Prescription Dispensing</span>
+            </div>
+            <span>&rarr;</span>
+          </a>
+        {% endif %}
       </div>
     </div>
 
-    <!-- Right Column: Safety Alerts & Clinical Quick Actions -->
+    <!-- Right Column: Safety & Account Center -->
     <div>
       <div class="safety-alert-card">
         <div class="safety-header">
@@ -224,7 +253,7 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
             Clinical Safety Protocol
           </span>
-          <span class="badge badge-danger">High Priority</span>
+          <span class="badge badge-danger">Active</span>
         </div>
         <p class="safety-body">
           Cross-check patient allergy and drug-interaction warnings on the patient profile before issuing prescriptions or dispensing antibiotics.
@@ -232,45 +261,45 @@
       </div>
 
       <div class="stitch-panel">
-        <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 0.875rem;">Account & System</h3>
-        <ul style="list-style: none; display: flex; flex-direction: column; gap: 0.625rem; font-size: 0.875rem;">
-          <li><a href="{% url 'password_change' %}" style="display: flex; justify-content: space-between; align-items: center;"><span>Change Password</span> &rarr;</a></li>
+        <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 0.875rem;">Account &amp; Security</h3>
+        <ul style="list-style: none; display: flex; flex-direction: column; gap: 0.75rem; font-size: 0.875rem;">
+          <li><a href="{% url 'password_change' %}" style="display: flex; justify-content: space-between; align-items: center; color: var(--color-secondary);"><span>Change Account Password</span> &rarr;</a></li>
         </ul>
       </div>
     </div>
   </div>
 
 {% else %}
-  <!-- Guest / Unauthenticated Landing View -->
+  <!-- Guest View for Vedant Hospital -->
   <div class="stitch-kpi-grid">
     <div class="stitch-kpi-card">
-      <div class="kpi-header"><span class="kpi-title">Appointments today</span><div class="kpi-badge-icon">&mdash;</div></div>
+      <div class="kpi-header"><span class="kpi-title">Outpatient Visits</span><div class="kpi-badge-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg></div></div>
       <div class="kpi-metric">18</div>
       <div class="kpi-footer-note"><span>Sign in to view queue</span></div>
     </div>
     <div class="stitch-kpi-card">
-      <div class="kpi-header"><span class="kpi-title">Waiting queue</span><div class="kpi-badge-icon">&mdash;</div></div>
+      <div class="kpi-header"><span class="kpi-title">Triage Waiting</span><div class="kpi-badge-icon" style="color: var(--color-tertiary);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div></div>
       <div class="kpi-metric">4</div>
       <div class="kpi-footer-note"><span>Avg. wait ~12 min</span></div>
     </div>
     <div class="stitch-kpi-card">
-      <div class="kpi-header"><span class="kpi-title">Prescriptions</span><div class="kpi-badge-icon">&mdash;</div></div>
+      <div class="kpi-header"><span class="kpi-title">Prescriptions</span><div class="kpi-badge-icon" style="color: #f59e0b;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg></div></div>
       <div class="kpi-metric">29</div>
       <div class="kpi-footer-note"><span>FEFO inventory</span></div>
     </div>
     <div class="stitch-kpi-card">
-      <div class="kpi-header"><span class="kpi-title">Reconciliation</span><div class="kpi-badge-icon">&mdash;</div></div>
+      <div class="kpi-header"><span class="kpi-title">Billing &amp; Cashier</span><div class="kpi-badge-icon" style="color: #8b5cf6;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg></div></div>
       <div class="kpi-metric">&mdash;</div>
-      <div class="kpi-footer-note"><span>Cashier & Invoices</span></div>
+      <div class="kpi-footer-note"><span>Invoices &amp; settlements</span></div>
     </div>
   </div>
 
   <div class="stitch-panel" style="text-align: center; padding: 4rem 1.5rem;">
-    <h2 style="font-size: 1.5rem; margin-bottom: 0.75rem;">Hospital Management System</h2>
-    <p style="color: var(--color-text-muted); font-size: 1rem; max-width: 500px; margin: 0 auto 1.75rem;">
-      Welcome to the clinical operations portal. Please sign in with your authorized hospital staff account to access medical records and appointments.
+    <h2 style="font-size: 1.5rem; margin-bottom: 0.75rem;">Vedant Hospital Management Portal</h2>
+    <p style="color: var(--color-text-muted); font-size: 1rem; max-width: 520px; margin: 0 auto 1.75rem;">
+      Welcome to the clinical operations portal. Please sign in with your authorized hospital staff account to access medical records, patient appointments, and pharmacy dispensing.
     </p>
-    <a href="{% url 'login' %}" class="btn-stitch-primary" style="padding: 0.75rem 2rem; font-size: 0.9375rem;">Staff Sign In</a>
+    <a href="{% url 'login' %}" class="btn-stitch-primary" style="padding: 0.75rem 2.25rem; font-size: 0.9375rem;">Staff Sign In</a>
   </div>
 {% endif %}
 {% endblock %}

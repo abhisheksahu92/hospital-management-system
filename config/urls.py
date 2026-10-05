@@ -102,3 +102,7 @@ urlpatterns = [
     path("accounts/", include("django.contrib.auth.urls")),
     path("admin/", admin.site.urls),
 ]
+
+from django.contrib.staticfiles.urls import staticfiles_urlpatterns  # noqa: E402
+
+urlpatterns += staticfiles_urlpatterns()

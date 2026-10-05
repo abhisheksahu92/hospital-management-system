@@ -4,24 +4,27 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}{{ hospital.name|default:"Hospital Management System" }}{% endblock %}</title>
+    <title>{% block title %}{{ hospital.name|default:"Vedant Hospital" }}{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'core/style.css' %}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     {% block extra_head %}{% endblock %}
   </head>
   <body>
-    <!-- Stitch Clinical Care OS Top Navigation Bar -->
+    <!-- Top Navigation Bar -->
     <header class="stitch-navbar">
       <div class="nav-brand-group">
         <a href="{% url 'home' %}" class="stitch-brand">
           <div class="brand-icon-badge">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 5v14M5 12h14"/>
             </svg>
           </div>
-          <span>{{ hospital.name|default:"Hospital Management System" }}</span>
+          <div class="brand-text-stack">
+            <span class="brand-title">{{ hospital.name|default:"Vedant Hospital" }}</span>
+            <span class="brand-subtitle">Hospital Management System</span>
+          </div>
         </a>
 
         {% if user.is_authenticated %}
@@ -55,7 +58,7 @@
             <button type="submit" class="btn-stitch-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8125rem; min-height: 32px;">Sign out</button>
           </form>
         {% else %}
-          <a href="{% url 'login' %}" class="btn-stitch-primary" style="padding: 0.4rem 1rem; font-size: 0.8125rem; min-height: 34px;">Staff Sign In</a>
+          <a href="{% url 'login' %}" class="btn-stitch-primary" style="padding: 0.4rem 1.1rem; font-size: 0.8125rem; min-height: 36px;">Staff Sign In</a>
         {% endif %}
       </div>
     </header>
