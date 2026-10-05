@@ -1,7 +1,9 @@
+from decimal import Decimal
 from django.conf import settings
 from django.db import models
 from django.db.models import F, Q
 from django.utils import timezone
+
 
 
 class TimestampedModel(models.Model):
@@ -768,3 +770,174 @@ class AuditEvent(models.Model):
     target_id = models.CharField(max_length=80)
     details = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+
+class PatientDocument(TimestampedModel):
+    class DocumentType(models.TextChoices):
+        PRESCRIPTION = "prescription", "Scanned Prescription"
+        LAB_REPORT = "lab_report", "Lab / Pathology Report"
+        RADIOLOGY = "radiology", "Radiology / X-Ray / Scan"
+        DISCHARGE_SUMMARY = "discharge", "Discharge Summary"
+        OTHER = "other", "Other Clinical Document"
+
+    patient = models.ForeignKey(
+        Patient, on_delete=models.CASCADE, related_name="documents"
+    )
+    document_type = models.CharField(
+        max_length=24, choices=DocumentType.choices, default=DocumentType.PRESCRIPTION
+    )
+    title = models.CharField(max_length=200)
+    file = models.FileField(upload_to="patient_documents/%Y/%m/")
+    notes = models.TextField(blank=True)
+    uploaded_by = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="uploaded_documents",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.title} ({self.get_document_type_display()}) - {self.patient.mrn}"
+
+
+class Ward(TimestampedModel):
+    class Category(models.TextChoices):
+        GENERAL = "general", "General Ward"
+        SEMI_PRIVATE = "semi_private", "Semi-Private Ward"
+        PRIVATE = "private", "Private Deluxe Room"
+        ICU = "icu", "Intensive Care Unit (ICU)"
+        CCU = "ccu", "Critical Care Unit (CCU)"
+        EMERGENCY = "emergency", "Emergency / Trauma Ward"
+
+    code = models.CharField(max_length=32, unique=True)
+    name = models.CharField(max_length=120, unique=True)
+    category = models.CharField(
+        max_length=24, choices=Category.choices, default=Category.GENERAL
+    )
+    floor = models.CharField(max_length=40, blank=True)
+    daily_rate = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.get_category_display()})"
+
+
+class Bed(TimestampedModel):
+    class Status(models.TextChoices):
+        AVAILABLE = "available", "Available"
+        OCCUPIED = "occupied", "Occupied"
+        MAINTENANCE = "maintenance", "Under Cleaning / Maintenance"
+
+    ward = models.ForeignKey(Ward, on_delete=models.PROTECT, related_name="beds")
+    bed_number = models.CharField(max_length=32)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.AVAILABLE
+    )
+    notes = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        unique_together = ("ward", "bed_number")
+
+    def __str__(self):
+        return f"{self.ward.name} · Bed {self.bed_number} ({self.get_status_display()})"
+
+
+class Admission(TimestampedModel):
+    class Status(models.TextChoices):
+        ADMITTED = "admitted", "Currently Admitted"
+        DISCHARGED = "discharged", "Discharged"
+        TRANSFERRED = "transferred", "Transferred"
+        LAMA = "lama", "Left Against Medical Advice (LAMA)"
+
+    admission_number = models.CharField(max_length=40, unique=True)
+    patient = models.ForeignKey(
+        Patient, on_delete=models.PROTECT, related_name="admissions"
+    )
+    bed = models.ForeignKey(
+        Bed, on_delete=models.PROTECT, related_name="admissions"
+    )
+    admitting_doctor = models.ForeignKey(
+        StaffProfile, on_delete=models.PROTECT, related_name="admissions_handled"
+    )
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.ADMITTED
+    )
+    admission_reason = models.TextField()
+    is_mlc = models.BooleanField(
+        default=False, verbose_name="Medico-Legal Case (MLC)"
+    )
+    admitted_at = models.DateTimeField(default=timezone.now)
+    discharged_at = models.DateTimeField(null=True, blank=True)
+    discharge_summary = models.TextField(blank=True)
+    discharge_condition = models.CharField(max_length=120, blank=True)
+    admitted_by = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="admissions_recorded",
+    )
+
+    class Meta:
+        ordering = ["-admitted_at"]
+
+    def __str__(self):
+        return f"IPD {self.admission_number} · {self.patient.full_name} ({self.bed.bed_number})"
+
+    @property
+    def total_advance_deposited(self):
+        return self.deposits.aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
+
+    @property
+    def total_days_stayed(self):
+        end_time = self.discharged_at or timezone.now()
+        duration = end_time - self.admitted_at
+        days = duration.days
+        if duration.seconds > 0 or days == 0:
+            days += 1
+        return days
+
+    @property
+    def estimated_bed_charges(self):
+        return Decimal(self.total_days_stayed) * self.bed.ward.daily_rate
+
+    @property
+    def net_balance(self):
+        return self.total_advance_deposited - self.estimated_bed_charges
+
+
+class InpatientDeposit(TimestampedModel):
+    receipt_number = models.CharField(max_length=40, unique=True)
+    admission = models.ForeignKey(
+        Admission, on_delete=models.PROTECT, related_name="deposits"
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    payment_method = models.ForeignKey(
+        PaymentMethod, on_delete=models.PROTECT
+    )
+    transaction_reference = models.CharField(
+        max_length=100, blank=True, help_text="Bank/UPI UTR or Card Auth Code"
+    )
+    deposited_by_name = models.CharField(
+        max_length=160, blank=True, help_text="Family / Attendant name"
+    )
+    deposited_by_phone = models.CharField(max_length=32, blank=True)
+    received_by = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="inpatient_deposits_collected",
+    )
+    received_at = models.DateTimeField(default=timezone.now)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-received_at"]
+
+    def __str__(self):
+        return f"{self.receipt_number} · {self.amount} for {self.admission.admission_number}"

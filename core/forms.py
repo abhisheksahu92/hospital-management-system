@@ -4,9 +4,14 @@ from django.forms import inlineformset_factory
 from django.utils import timezone
 
 from .models import (
+    Admission,
     Appointment,
+    Bed,
     Consultation,
+    InpatientDeposit,
     Patient,
+    PatientDocument,
+    PaymentMethod,
     Prescription,
     PrescriptionItem,
     StaffProfile,
@@ -184,3 +189,163 @@ PrescriptionItemFormSet = inlineformset_factory(
     extra=1,
     can_delete=False,
 )
+
+
+class PatientDocumentForm(forms.ModelForm):
+    class Meta:
+        model = PatientDocument
+        fields = ("document_type", "title", "file", "notes")
+        widgets = {
+            "title": forms.TextInput(
+                attrs={
+                    "placeholder": "e.g. Scanned Prescription - Dr. Sharma OPD",
+                    "class": "clinical-input",
+                }
+            ),
+            "document_type": forms.Select(attrs={"class": "clinical-input"}),
+            "file": forms.FileInput(
+                attrs={
+                    "class": "clinical-input",
+                    "accept": ".pdf,.jpg,.jpeg,.png,.webp",
+                }
+            ),
+            "notes": forms.Textarea(
+                attrs={
+                    "rows": 2,
+                    "placeholder": "Any remarks or notes about this document...",
+                    "class": "clinical-input",
+                }
+            ),
+        }
+
+
+class AdmissionForm(forms.ModelForm):
+    class Meta:
+        model = Admission
+        fields = (
+            "patient",
+            "bed",
+            "admitting_doctor",
+            "admission_reason",
+            "is_mlc",
+        )
+        widgets = {
+            "patient": forms.Select(attrs={"class": "clinical-input"}),
+            "bed": forms.Select(attrs={"class": "clinical-input"}),
+            "admitting_doctor": forms.Select(attrs={"class": "clinical-input"}),
+            "admission_reason": forms.Textarea(
+                attrs={
+                    "rows": 3,
+                    "placeholder": "Clinical diagnosis, provisional findings, and indication for hospitalization...",
+                    "class": "clinical-input",
+                }
+            ),
+            "is_mlc": forms.CheckboxInput(attrs={"style": "width: 18px; height: 18px;"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["patient"].queryset = Patient.objects.filter(
+            archived_at__isnull=True
+        ).order_by("full_name")
+        self.fields["bed"].queryset = Bed.objects.filter(
+            status=Bed.Status.AVAILABLE
+        ).select_related("ward").order_by("ward__name", "bed_number")
+        self.fields["admitting_doctor"].queryset = (
+            StaffProfile.objects.filter(
+                user__groups__name="Doctor",
+                user__is_active=True,
+            )
+            .select_related("user", "department")
+            .order_by("user__first_name", "user__username")
+        )
+
+
+class InpatientDepositForm(forms.ModelForm):
+    class Meta:
+        model = InpatientDeposit
+        fields = (
+            "amount",
+            "payment_method",
+            "transaction_reference",
+            "deposited_by_name",
+            "deposited_by_phone",
+            "notes",
+        )
+        widgets = {
+            "amount": forms.NumberInput(
+                attrs={
+                    "step": "0.01",
+                    "min": "1.00",
+                    "placeholder": "e.g. 20000.00",
+                    "class": "clinical-input",
+                }
+            ),
+            "payment_method": forms.Select(attrs={"class": "clinical-input"}),
+            "transaction_reference": forms.TextInput(
+                attrs={
+                    "placeholder": "Bank / UPI UTR / Card Auth Code",
+                    "class": "clinical-input",
+                }
+            ),
+            "deposited_by_name": forms.TextInput(
+                attrs={
+                    "placeholder": "Name of family member / attendant",
+                    "class": "clinical-input",
+                }
+            ),
+            "deposited_by_phone": forms.TextInput(
+                attrs={
+                    "placeholder": "Attendant phone number",
+                    "class": "clinical-input",
+                }
+            ),
+            "notes": forms.Textarea(
+                attrs={
+                    "rows": 2,
+                    "placeholder": "Advance deposit remarks...",
+                    "class": "clinical-input",
+                }
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["payment_method"].queryset = PaymentMethod.objects.filter(
+            is_active=True
+        )
+
+
+class DischargeForm(forms.ModelForm):
+    class Meta:
+        model = Admission
+        fields = (
+            "discharge_condition",
+            "discharge_summary",
+            "status",
+        )
+        widgets = {
+            "discharge_condition": forms.TextInput(
+                attrs={
+                    "placeholder": "e.g. Stable / Hemodynamically Normal / Cured",
+                    "class": "clinical-input",
+                }
+            ),
+            "discharge_summary": forms.Textarea(
+                attrs={
+                    "rows": 4,
+                    "placeholder": "Summary of hospital course, investigations performed, and discharge medications...",
+                    "class": "clinical-input",
+                }
+            ),
+            "status": forms.Select(
+                choices=[
+                    (Admission.Status.DISCHARGED, "Normal Medical Discharge"),
+                    (Admission.Status.LAMA, "Left Against Medical Advice (LAMA)"),
+                    (Admission.Status.TRANSFERRED, "Transferred to Higher Facility"),
+                ],
+                attrs={"class": "clinical-input"},
+            ),
+        }
+
+

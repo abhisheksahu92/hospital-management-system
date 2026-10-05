@@ -7,6 +7,7 @@ from django.contrib.auth.models import Group
 from django.core import mail
 from django.db import IntegrityError, transaction
 from django.db.models import Sum
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
@@ -42,6 +43,9 @@ from .models import (
     Supplier,
     VisitType,
     ReturnLine,
+    Ward,
+    Bed,
+    Admission,
 )
 from .authorization import doctor_patient_queryset
 from .forms import AppointmentForm, PatientForm
@@ -314,7 +318,7 @@ class HospitalBootstrapTests(TestCase):
             set(Group.objects.values_list("name", flat=True)),
             {"Reception", "Pharmacy", "Doctor", "Administrator"},
         )
-        self.assertEqual(NumberSequence.objects.count(), 8)
+        self.assertEqual(NumberSequence.objects.count(), 10)
 
     def test_numbering_allocates_distinct_values_from_config(self):
         NumberSequence.objects.create(code="PATIENT", prefix="P-")
@@ -1566,6 +1570,38 @@ class PatientWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertTrue(Patient.objects.filter(pk=patient.pk).exists())
 
+    def test_reception_can_upload_scanned_prescription_document(self):
+        patient = Patient.objects.create(mrn="DOC-PAT-001", full_name="Document Patient")
+        self.client.force_login(self.reception)
+
+        fake_pdf = SimpleUploadedFile(
+            "prescription_scan.pdf",
+            b"%PDF-1.4 fake prescription content",
+            content_type="application/pdf",
+        )
+        response = self.client.post(
+            reverse("patient_document_upload", args=[patient.pk]),
+            {
+                "document_type": "prescription",
+                "title": "Dr. Sharma OPD Prescription",
+                "notes": "Handwritten OPD sheet scanned at reception desk",
+                "file": fake_pdf,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(patient.documents.count(), 1)
+        doc = patient.documents.first()
+        self.assertEqual(doc.title, "Dr. Sharma OPD Prescription")
+        self.assertEqual(doc.document_type, "prescription")
+        self.assertEqual(doc.uploaded_by, self.reception.staff_profile)
+
+        # Check detail page displays uploaded document
+        detail = self.client.get(reverse("patient_detail", args=[patient.pk]))
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, "Dr. Sharma OPD Prescription")
+        self.assertContains(detail, "Scanned Prescription")
+
+
 
 class AppointmentWorkflowTests(TestCase):
     def setUp(self):
@@ -2222,3 +2258,181 @@ class ClinicalWorkflowTests(TestCase):
             follow=True,
         )
         self.assertContains(resp, "Consultation saved successfully")
+
+
+class InpatientHospitalizationTests(TestCase):
+    def setUp(self):
+        call_command("bootstrap_hospital")
+        User = get_user_model()
+        self.reception = User.objects.create_user(
+            username="ipd_reception", password="password123"
+        )
+        self.reception.groups.add(Group.objects.get(name="Reception"))
+        self.reception_profile = StaffProfile.objects.create(
+            user=self.reception, employee_id="REC-IPD-01"
+        )
+
+        self.doctor = User.objects.create_user(
+            username="ipd_doctor", password="password123", first_name="Dr. Anil", last_name="Sharma"
+        )
+        self.doctor.groups.add(Group.objects.get(name="Doctor"))
+        self.dept = Department.objects.create(name="General Medicine", code="MED")
+        self.doctor_profile = StaffProfile.objects.create(
+            user=self.doctor, employee_id="DOC-IPD-01", department=self.dept
+        )
+
+        self.patient = Patient.objects.create(
+            mrn="PAT-IPD-001",
+            full_name="Rajesh Verma",
+            phone="9876543210",
+        )
+
+        self.ward = Ward.objects.create(
+            code="GEN-A",
+            name="General Medical Ward",
+            category=Ward.Category.GENERAL,
+            daily_rate=Decimal("1500.00"),
+        )
+        self.bed1 = Bed.objects.create(
+            ward=self.ward,
+            bed_number="101",
+            status=Bed.Status.AVAILABLE,
+        )
+        self.bed2 = Bed.objects.create(
+            ward=self.ward,
+            bed_number="102",
+            status=Bed.Status.AVAILABLE,
+        )
+
+        self.payment_method_upi = PaymentMethod.objects.create(
+            name="UPI / QR Code", is_active=True
+        )
+
+    def test_reception_can_admit_patient_and_bed_becomes_occupied(self):
+        self.client.force_login(self.reception)
+        response = self.client.post(
+            reverse("admission_create"),
+            {
+                "patient": self.patient.pk,
+                "bed": self.bed1.pk,
+                "admitting_doctor": self.doctor_profile.pk,
+                "admission_reason": "High grade fever with acute dehydration. Requires IV fluid therapy.",
+                "is_mlc": False,
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.bed1.refresh_from_db()
+        self.assertEqual(self.bed1.status, Bed.Status.OCCUPIED)
+
+        admission = Admission.objects.get(patient=self.patient)
+        self.assertEqual(admission.status, Admission.Status.ADMITTED)
+        self.assertTrue(admission.admission_number)
+        self.assertContains(response, "admitted to General Medical Ward (Bed 101) successfully")
+
+    def test_inpatient_advance_deposit_recording_with_utr(self):
+        admission = Admission.objects.create(
+            admission_number="ADM-TEST-001",
+            patient=self.patient,
+            bed=self.bed1,
+            admitting_doctor=self.doctor_profile,
+            admitted_by=self.reception_profile,
+            admission_reason="Chest pain observation",
+            status=Admission.Status.ADMITTED,
+        )
+        self.bed1.status = Bed.Status.OCCUPIED
+        self.bed1.save()
+
+        self.client.force_login(self.reception)
+        response = self.client.post(
+            reverse("inpatient_deposit_create", args=[admission.pk]),
+            {
+                "amount": "15000.00",
+                "payment_method": self.payment_method_upi.pk,
+                "transaction_reference": "UPI987654321012",
+                "deposited_by_name": "Suresh Verma",
+                "deposited_by_phone": "9876500000",
+                "notes": "Initial IPD admission deposit",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(admission.deposits.count(), 1)
+        deposit = admission.deposits.first()
+        self.assertEqual(deposit.amount, Decimal("15000.00"))
+        self.assertEqual(deposit.transaction_reference, "UPI987654321012")
+        self.assertEqual(admission.total_advance_deposited, Decimal("15000.00"))
+        self.assertContains(response, "Advance deposit of ₹15000.00 recorded successfully")
+
+    def test_discharge_frees_bed_and_records_clinical_summary(self):
+        admission = Admission.objects.create(
+            admission_number="ADM-TEST-002",
+            patient=self.patient,
+            bed=self.bed2,
+            admitting_doctor=self.doctor_profile,
+            admitted_by=self.reception_profile,
+            admission_reason="Pneumonia management",
+            status=Admission.Status.ADMITTED,
+        )
+        self.bed2.status = Bed.Status.OCCUPIED
+        self.bed2.save()
+
+        self.client.force_login(self.doctor)
+        response = self.client.post(
+            reverse("admission_discharge", args=[admission.pk]),
+            {
+                "status": Admission.Status.DISCHARGED,
+                "discharge_condition": "Hemodynamically stable, afebrile for 48 hours",
+                "discharge_summary": "Course uneventful. Prescribed oral cefixime for 5 days. Follow up in OPD after 1 week.",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        admission.refresh_from_db()
+        self.assertEqual(admission.status, Admission.Status.DISCHARGED)
+        self.assertIsNotNone(admission.discharged_at)
+        self.bed2.refresh_from_db()
+        self.assertEqual(self.bed2.status, Bed.Status.AVAILABLE)
+        self.assertContains(response, "Bed 102 is now marked Available")
+
+
+class PatientDocumentUploadTests(TestCase):
+    def setUp(self):
+        call_command("bootstrap_hospital")
+        User = get_user_model()
+        self.reception = User.objects.create_user(
+            username="doc_reception", password="password123"
+        )
+        self.reception.groups.add(Group.objects.get(name="Reception"))
+        self.reception_profile = StaffProfile.objects.create(
+            user=self.reception, employee_id="REC-DOC-01"
+        )
+        self.patient = Patient.objects.create(
+            mrn="PAT-DOC-001",
+            full_name="Sunita Devi",
+            phone="9123456780",
+        )
+
+    def test_reception_can_upload_scanned_paper_prescription(self):
+        self.client.force_login(self.reception)
+        sample_file = SimpleUploadedFile(
+            "external_rx.pdf", b"%PDF-1.4 sample rx content", content_type="application/pdf"
+        )
+        response = self.client.post(
+            reverse("patient_document_upload", args=[self.patient.pk]),
+            {
+                "title": "Outside Doctor Physical Prescription",
+                "document_type": "prescription",
+                "file": sample_file,
+                "notes": "Patient brought physical prescription from district hospital.",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.patient.documents.count(), 1)
+        doc = self.patient.documents.first()
+        self.assertEqual(doc.title, "Outside Doctor Physical Prescription")
+        self.assertEqual(doc.document_type, "prescription")
+        self.assertContains(response, "uploaded successfully")
+
+

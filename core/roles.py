@@ -19,6 +19,15 @@ ROLE_PERMISSIONS = {
         "core.view_paymentmethod",
         "core.view_adjustment",
         "core.view_refund",
+        "core.add_patientdocument",
+        "core.view_patientdocument",
+        "core.view_ward",
+        "core.view_bed",
+        "core.add_admission",
+        "core.change_admission",
+        "core.view_admission",
+        "core.add_inpatientdeposit",
+        "core.view_inpatientdeposit",
     ),
     "Pharmacy": (
         "core.view_patient",
@@ -68,6 +77,12 @@ ROLE_PERMISSIONS = {
         "core.view_prescriptionitem",
         "core.add_prescriptionitem",
         "core.change_prescriptionitem",
+        "core.view_patientdocument",
+        "core.add_patientdocument",
+        "core.view_ward",
+        "core.view_bed",
+        "core.view_admission",
+        "core.change_admission",
     ),
     "Administrator": (
         "auth.view_user",
@@ -109,8 +124,24 @@ ROLE_PERMISSIONS = {
         "core.view_medicine",
         "core.add_medicine",
         "core.change_medicine",
+        "core.view_patientdocument",
+        "core.add_patientdocument",
+        "core.change_patientdocument",
+        "core.delete_patientdocument",
+        "core.view_ward",
+        "core.add_ward",
+        "core.change_ward",
+        "core.view_bed",
+        "core.add_bed",
+        "core.change_bed",
+        "core.view_admission",
+        "core.add_admission",
+        "core.change_admission",
+        "core.view_inpatientdeposit",
+        "core.add_inpatientdeposit",
     ),
 }
+
 
 
 def configure_role_permissions():

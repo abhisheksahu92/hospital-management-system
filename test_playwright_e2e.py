@@ -1,5 +1,5 @@
-import sys
 from playwright.sync_api import sync_playwright
+
 
 BASE_URL = "http://127.0.0.1:8001"
 ARTIFACT_DIR = "/home/abhishek-sahu/.gemini/antigravity/brain/fbc6aff8-33fd-4f16-ade3-8a42f04f416d"
@@ -61,8 +61,10 @@ def run_tests():
         print("--- [TEST 5] Advancing multi-step intake form ---")
         page.click("#btn-next-step")
         page.wait_for_timeout(300)
-        page.fill("#id_phone", "9876543210")
-        page.fill("#id_email", "playwright.test@example.com")
+        import time
+        unique_phone = f"9{int(time.time()) % 1000000000:09d}"
+        page.fill("#id_phone", unique_phone)
+        page.fill("#id_email", f"playwright.{int(time.time())}@example.com")
         page.screenshot(path=f"{ARTIFACT_DIR}/playwright_05_patient_reg_step2.png")
         print("Screenshot saved: playwright_05_patient_reg_step2.png")
 
@@ -76,6 +78,11 @@ def run_tests():
         print("--- [TEST 6] Submitting patient registration ---")
         page.click("#btn-submit-patient")
         page.wait_for_load_state("networkidle")
+        if page.locator("#btn-submit-duplicate").count() > 0 and page.locator("#btn-submit-duplicate").is_visible():
+            print("Duplicate detected, confirming registration as separate patient...")
+            page.click("#btn-submit-duplicate")
+            page.wait_for_load_state("networkidle")
+
         print("URL after registration submission:", page.url)
         page.screenshot(path=f"{ARTIFACT_DIR}/playwright_07_patient_detail.png")
         print("Screenshot saved: playwright_07_patient_detail.png")
@@ -105,6 +112,44 @@ def run_tests():
         page.wait_for_load_state("networkidle")
         page.screenshot(path=f"{ARTIFACT_DIR}/playwright_10_invoices.png")
         print("Screenshot saved: playwright_10_invoices.png")
+
+        # Test IPD Admissions list
+        print("--- [TEST 10] Testing IPD Admissions & Bed Occupancy page ---")
+        page.goto(f"{BASE_URL}/ipd/admissions/")
+        page.wait_for_load_state("networkidle")
+        page.screenshot(path=f"{ARTIFACT_DIR}/playwright_11_ipd_admissions.png")
+        print("Screenshot saved: playwright_11_ipd_admissions.png")
+
+        # Test IPD Patient Admission Form
+        print("--- [TEST 11] Navigating to IPD Patient Admission Form ---")
+        page.goto(f"{BASE_URL}/ipd/admissions/create/")
+        page.wait_for_load_state("networkidle")
+        page.screenshot(path=f"{ARTIFACT_DIR}/playwright_12_ipd_admission_form.png")
+        print("Screenshot saved: playwright_12_ipd_admission_form.png")
+
+        # Fill admission and submit
+        print("--- [TEST 12] Admitting patient to ward bed & recording UPI advance deposit ---")
+        page.select_option("#id_patient", index=1)
+        page.select_option("#id_bed", index=1)
+        page.select_option("#id_admitting_doctor", index=1)
+        page.fill("#id_admission_reason", "Acute viral pneumonitis with respiratory distress. Admitted to General Medical Ward for IV antibiotic therapy and continuous SpO2 monitoring.")
+        page.click("button:has-text('Confirm Patient Admission')")
+        page.wait_for_load_state("networkidle")
+        print("Admission dossier URL:", page.url)
+        page.screenshot(path=f"{ARTIFACT_DIR}/playwright_13_ipd_admission_dossier.png")
+        print("Screenshot saved: playwright_13_ipd_admission_dossier.png")
+
+        # Record advance deposit
+        page.fill("#id_amount", "10000.00")
+        page.select_option("#id_payment_method", index=1)
+        page.fill("#id_transaction_reference", "UPI987654321099")
+        page.fill("#id_deposited_by_name", "Kavita Sharma (Family)")
+        page.fill("#id_deposited_by_phone", "9876501234")
+        page.fill("#id_notes", "Initial IPD admission security deposit")
+        page.click("button:has-text('Collect & Issue Receipt')")
+        page.wait_for_load_state("networkidle")
+        page.screenshot(path=f"{ARTIFACT_DIR}/playwright_14_ipd_deposit_recorded.png")
+        print("Screenshot saved: playwright_14_ipd_deposit_recorded.png")
 
         browser.close()
         print("\n================ ALL PLAYWRIGHT TESTS PASSED SUCCESSFULLY! ================\n")

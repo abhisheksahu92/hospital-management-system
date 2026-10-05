@@ -1,4 +1,7 @@
+from django.conf import settings
+from django.conf.urls.static import static
 from django.contrib import admin
+from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.urls import include, path
 
 from core import views
@@ -11,6 +14,28 @@ urlpatterns = [
     path("patients/register/", views.patient_create, name="patient_create"),
     path("patients/<int:pk>/", views.patient_detail, name="patient_detail"),
     path("patients/<int:pk>/edit/", views.patient_update, name="patient_update"),
+    path(
+        "patients/<int:pk>/documents/upload/",
+        views.patient_document_upload,
+        name="patient_document_upload",
+    ),
+    path("ipd/admissions/", views.admission_list, name="admission_list"),
+    path("ipd/admissions/create/", views.admission_create, name="admission_create"),
+    path(
+        "ipd/admissions/<int:pk>/",
+        views.admission_detail,
+        name="admission_detail",
+    ),
+    path(
+        "ipd/admissions/<int:admission_id>/deposits/create/",
+        views.inpatient_deposit_create,
+        name="inpatient_deposit_create",
+    ),
+    path(
+        "ipd/admissions/<int:pk>/discharge/",
+        views.admission_discharge,
+        name="admission_discharge",
+    ),
     path("invoices/create/", views.invoice_create, name="invoice_create"),
     path("invoices/", views.invoice_list, name="invoice_list"),
     path("invoices/<int:pk>/", views.invoice_detail, name="invoice_detail"),
@@ -103,6 +128,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
 ]
 
-from django.contrib.staticfiles.urls import staticfiles_urlpatterns  # noqa: E402
-
 urlpatterns += staticfiles_urlpatterns()
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+

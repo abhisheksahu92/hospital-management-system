@@ -28,6 +28,8 @@ class Command(BaseCommand):
             "STOCK_RECEIPT",
             "DISPENSING",
             "PHARMACY_RETURN",
+            "ADMISSION",
+            "DEPOSIT",
         ):
             NumberSequence.objects.get_or_create(code=code)
 

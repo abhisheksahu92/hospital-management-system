@@ -1,0 +1,138 @@
+{% extends "core/base.html" %}
+
+{% block title %}Patient Admission (IPD) | {{ hospital.name|default:"Vedant Hospital" }}{% endblock %}
+
+{% block content %}
+<nav class="page-breadcrumb" aria-label="Breadcrumb">
+  <a href="{% url 'admission_list' %}">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+    IPD Admissions
+  </a>
+  <span>/</span>
+  <span>New Admission</span>
+</nav>
+
+<header class="page-header" style="margin-bottom: 2rem;">
+  <div>
+    <span class="page-kicker" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-primary); font-weight: 700;">Inpatient Department (IPD)</span>
+    <h1 style="font-size: 1.875rem; font-weight: 800; color: var(--color-text); margin-top: 0.25rem;">Admit Patient to Ward</h1>
+    <p style="color: var(--color-text-muted); font-size: 0.9375rem; margin-top: 0.25rem;">Allocate an available ward bed, record provisional diagnosis, and initiate the inpatient care cycle.</p>
+  </div>
+</header>
+
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 2rem; align-items: start;">
+  <!-- Admission Form Card -->
+  <div class="stitch-card" style="padding: 2.25rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);">
+    {% if form.non_field_errors %}
+      <div class="stitch-error-banner" role="alert" style="margin-bottom: 1.5rem; padding: 1rem 1.25rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius-md); color: #991b1b; font-size: 0.875rem;">
+        {% for error in form.non_field_errors %}<p style="margin: 0;">{{ error }}</p>{% endfor %}
+      </div>
+    {% endif %}
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+
+      <div style="display: flex; flex-direction: column; gap: 1.75rem;">
+        <!-- Patient Selection -->
+        <div>
+          <label for="{{ form.patient.id_for_label }}" style="display: block; font-size: 0.875rem; font-weight: 700; color: var(--color-text); margin-bottom: 0.5rem;">
+            Select Patient <span style="color: var(--color-danger);">*</span>
+          </label>
+          {{ form.patient }}
+          {% if form.patient.errors %}
+            <p style="color: var(--color-danger); font-size: 0.8125rem; margin-top: 0.375rem;">{{ form.patient.errors.0 }}</p>
+          {% else %}
+            <p style="color: var(--color-text-muted); font-size: 0.8125rem; margin-top: 0.375rem;">Choose registered patient from the active directory.</p>
+          {% endif %}
+        </div>
+
+        <!-- Bed Selection -->
+        <div>
+          <label for="{{ form.bed.id_for_label }}" style="display: block; font-size: 0.875rem; font-weight: 700; color: var(--color-text); margin-bottom: 0.5rem;">
+            Available Ward &amp; Bed <span style="color: var(--color-danger);">*</span>
+          </label>
+          {{ form.bed }}
+          {% if form.bed.errors %}
+            <p style="color: var(--color-danger); font-size: 0.8125rem; margin-top: 0.375rem;">{{ form.bed.errors.0 }}</p>
+          {% else %}
+            <p style="color: var(--color-text-muted); font-size: 0.8125rem; margin-top: 0.375rem;">Only beds currently marked Available are displayed for allocation.</p>
+          {% endif %}
+        </div>
+
+        <!-- Admitting Doctor -->
+        <div>
+          <label for="{{ form.admitting_doctor.id_for_label }}" style="display: block; font-size: 0.875rem; font-weight: 700; color: var(--color-text); margin-bottom: 0.5rem;">
+            Admitting Consultant / Doctor <span style="color: var(--color-danger);">*</span>
+          </label>
+          {{ form.admitting_doctor }}
+          {% if form.admitting_doctor.errors %}
+            <p style="color: var(--color-danger); font-size: 0.8125rem; margin-top: 0.375rem;">{{ form.admitting_doctor.errors.0 }}</p>
+          {% else %}
+            <p style="color: var(--color-text-muted); font-size: 0.8125rem; margin-top: 0.375rem;">Senior physician or surgeon authorizing the admission.</p>
+          {% endif %}
+        </div>
+
+        <!-- Admission Reason / Diagnosis -->
+        <div>
+          <label for="{{ form.admission_reason.id_for_label }}" style="display: block; font-size: 0.875rem; font-weight: 700; color: var(--color-text); margin-bottom: 0.5rem;">
+            Admission Diagnosis &amp; Clinical Indication <span style="color: var(--color-danger);">*</span>
+          </label>
+          {{ form.admission_reason }}
+          {% if form.admission_reason.errors %}
+            <p style="color: var(--color-danger); font-size: 0.8125rem; margin-top: 0.375rem;">{{ form.admission_reason.errors.0 }}</p>
+          {% endif %}
+        </div>
+
+        <!-- Medico-Legal Case (MLC) Checkbox -->
+        <div style="background: var(--color-background-soft); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); display: flex; align-items: flex-start; gap: 0.875rem;">
+          {{ form.is_mlc }}
+          <div>
+            <label for="{{ form.is_mlc.id_for_label }}" style="font-weight: 700; font-size: 0.9375rem; color: var(--color-text); cursor: pointer;">
+              Flag as Medico-Legal Case (MLC)
+            </label>
+            <p style="color: var(--color-text-muted); font-size: 0.8125rem; margin-top: 0.25rem;">
+              Check if this admission involves RTA (road traffic accident), assault, poisoning, or legal police intimation requirements.
+            </p>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="display: flex; gap: 1rem; align-items: center; justify-content: flex-end; margin-top: 1rem; padding-top: 1.5rem; border-top: 1px solid var(--color-border);">
+          <a href="{% url 'admission_list' %}" class="btn-stitch-secondary" style="padding: 0.625rem 1.25rem; border-radius: var(--radius-md); text-decoration: none; font-size: 0.875rem; font-weight: 600;">
+            Cancel
+          </a>
+          <button type="submit" class="btn-stitch-primary" style="padding: 0.625rem 1.5rem; border-radius: var(--radius-md); font-size: 0.875rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem; border: none; cursor: pointer;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+            Confirm Patient Admission
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- Sidebar Guidelines & Clinical Protocol -->
+  <aside style="display: flex; flex-direction: column; gap: 1.5rem;">
+    <div class="stitch-card" style="padding: 1.5rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg);">
+      <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem; color: var(--color-secondary);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        Admission Protocol
+      </h3>
+      <ul style="padding-left: 1.25rem; margin: 0; color: var(--color-text-muted); font-size: 0.8125rem; line-height: 1.6;">
+        <li>Allocating a bed instantly reserves the slot and marks it <strong>Occupied</strong> across the hospital system.</li>
+        <li>Once admitted, an <strong>Advance Deposit</strong> can be collected immediately with UPI/Card UTR tracking.</li>
+        <li>Daily bed charges will accrue based on the ward's published tariff.</li>
+        <li>Discharge requires attending doctor authorization and clinical summary completion.</li>
+      </ul>
+    </div>
+
+    <div class="stitch-card" style="padding: 1.5rem; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--radius-lg);">
+      <h4 style="font-size: 0.875rem; font-weight: 700; color: #1e40af; margin-bottom: 0.5rem;">
+        Vedant Inpatient Standards
+      </h4>
+      <p style="font-size: 0.8125rem; color: #1e3a8a; line-height: 1.5; margin: 0;">
+        All inpatients must receive admission wristband identification and digital intake record verification prior to ward transfer.
+      </p>
+    </div>
+  </aside>
+</div>
+{% endblock %}

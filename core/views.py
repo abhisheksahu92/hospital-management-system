@@ -17,15 +17,21 @@ from django.utils.dateparse import parse_date
 
 from .authorization import doctor_patient_queryset
 from .forms import (
+    AdmissionForm,
     AppointmentForm,
     ConsultationForm,
+    DischargeForm,
+    InpatientDepositForm,
+    PatientDocumentForm,
     PatientForm,
     PrescriptionItemFormSet,
     appointment_slot_conflicts,
 )
 from .models import (
+    Admission,
     Appointment,
     AuditEvent,
+    Bed,
     Consultation,
     Adjustment,
     Dispensing,
@@ -50,6 +56,7 @@ from .models import (
     StockMovement,
     StockReceipt,
     Supplier,
+    Ward,
 )
 from .services.numbering import next_number
 
@@ -672,6 +679,9 @@ def patient_create(request):
 def patient_detail(request, pk):
     patient = get_object_or_404(_patient_read_queryset(request.user), pk=pk)
     can_bill = _has_role(request.user, "Reception")
+    can_upload_docs = _has_role(request.user, "Reception") or _has_role(
+        request.user, "Administrator"
+    ) or _has_role(request.user, "Doctor")
     return render(
         request,
         "core/patients/detail.html",
@@ -680,6 +690,9 @@ def patient_detail(request, pk):
             "can_edit": _has_role(request.user, "Reception"),
             "can_view_clinical": _has_role(request.user, "Doctor"),
             "can_bill": can_bill,
+            "can_upload_docs": can_upload_docs,
+            "document_form": PatientDocumentForm() if can_upload_docs else None,
+            "documents": patient.documents.all(),
             "invoices": patient.invoices.order_by("-created_at")
             if can_bill
             else Invoice.objects.none(),
@@ -688,6 +701,7 @@ def patient_detail(request, pk):
             else Service.objects.none(),
         },
     )
+
 
 
 @permission_required("core.change_patient", raise_exception=True)
@@ -715,6 +729,37 @@ def patient_update(request, pk):
         "core/patients/form.html",
         {"form": form, "creating": False, "patient": patient},
     )
+
+
+@permission_required("core.add_patientdocument", raise_exception=True)
+def patient_document_upload(request, pk):
+    patient = get_object_or_404(Patient.objects.filter(archived_at__isnull=True), pk=pk)
+    if not (
+        _has_role(request.user, "Reception")
+        or _has_role(request.user, "Doctor")
+        or _has_role(request.user, "Administrator")
+    ):
+        raise PermissionDenied
+
+    if request.method == "POST":
+        form = PatientDocumentForm(request.POST, request.FILES)
+        if form.is_valid():
+            with transaction.atomic():
+                doc = form.save(commit=False)
+                doc.patient = patient
+                doc.uploaded_by = StaffProfile.objects.filter(user=request.user).first()
+                doc.save()
+                _audit_patient_change(
+                    request,
+                    patient,
+                    "patient.document_uploaded",
+                    [f"doc_type:{doc.document_type}", f"title:{doc.title}"],
+                )
+            messages.success(request, f"Document '{doc.title}' uploaded successfully.")
+        else:
+            messages.error(request, "Failed to upload document. Please check the file and try again.")
+    return redirect("patient_detail", pk=patient.pk)
+
 
 
 def _appointment_read_queryset(user):
@@ -1670,3 +1715,243 @@ def pharmacy_prescription_list(request):
             "query": query,
         },
     )
+
+
+# ==============================================================================
+# INPATIENT HOSPITALIZATION (IPD) MODULE
+# ==============================================================================
+
+
+@permission_required("core.view_admission", raise_exception=True)
+def admission_list(request):
+    if not (
+        _has_role(request.user, "Reception")
+        or _has_role(request.user, "Doctor")
+        or _has_role(request.user, "Administrator")
+    ):
+        raise PermissionDenied
+
+    admissions = (
+        Admission.objects.select_related(
+            "patient", "bed__ward", "admitting_doctor__user"
+        )
+        .prefetch_related("deposits")
+        .order_by("-admitted_at")
+    )
+    query = request.GET.get("q", "").strip()
+    status_filter = request.GET.get("status", "").strip()
+
+    if status_filter:
+        admissions = admissions.filter(status=status_filter)
+    if query:
+        admissions = admissions.filter(
+            Q(admission_number__icontains=query)
+            | Q(patient__mrn__icontains=query)
+            | Q(patient__full_name__icontains=query)
+            | Q(bed__bed_number__icontains=query)
+            | Q(bed__ward__name__icontains=query)
+        )
+
+    wards = Ward.objects.filter(is_active=True).prefetch_related("beds")
+    total_beds = Bed.objects.count()
+    occupied_beds = Bed.objects.filter(status=Bed.Status.OCCUPIED).count()
+    available_beds = Bed.objects.filter(status=Bed.Status.AVAILABLE).count()
+
+    return render(
+        request,
+        "core/ipd/admission_list.html",
+        {
+            "admissions": admissions,
+            "wards": wards,
+            "total_beds": total_beds,
+            "occupied_beds": occupied_beds,
+            "available_beds": available_beds,
+            "query": query,
+            "status_filter": status_filter,
+            "can_admit": _has_role(request.user, "Reception")
+            or _has_role(request.user, "Administrator"),
+        },
+    )
+
+
+@permission_required("core.add_admission", raise_exception=True)
+def admission_create(request):
+    if not (
+        _has_role(request.user, "Reception") or _has_role(request.user, "Administrator")
+    ):
+        raise PermissionDenied
+
+    initial = {}
+    patient_id = request.GET.get("patient")
+    if patient_id:
+        initial["patient"] = patient_id
+
+    form = AdmissionForm(request.POST or None, initial=initial)
+    if request.method == "POST" and form.is_valid():
+        with transaction.atomic():
+            admission = form.save(commit=False)
+            admission.admission_number = next_number("ADMISSION")
+            admission.admitted_by = StaffProfile.objects.filter(
+                user=request.user
+            ).first()
+            admission.save()
+
+            # Mark bed as occupied
+            bed = admission.bed
+            bed.status = Bed.Status.OCCUPIED
+            bed.save(update_fields=["status"])
+
+            _audit_patient_change(
+                request,
+                admission.patient,
+                "ipd.patient_admitted",
+                [
+                    f"adm:{admission.admission_number}",
+                    f"ward:{bed.ward.name}",
+                    f"bed:{bed.bed_number}",
+                ],
+            )
+        messages.success(
+            request,
+            f"Patient {admission.patient.full_name} admitted to {bed.ward.name} (Bed {bed.bed_number}) successfully.",
+        )
+        return redirect("admission_detail", pk=admission.pk)
+
+    return render(
+        request,
+        "core/ipd/admission_form.html",
+        {"form": form, "creating": True},
+    )
+
+
+@permission_required("core.view_admission", raise_exception=True)
+def admission_detail(request, pk):
+    if not (
+        _has_role(request.user, "Reception")
+        or _has_role(request.user, "Doctor")
+        or _has_role(request.user, "Administrator")
+    ):
+        raise PermissionDenied
+
+    admission = get_object_or_404(
+        Admission.objects.select_related(
+            "patient", "bed__ward", "admitting_doctor__user", "admitted_by__user"
+        ).prefetch_related("deposits__payment_method", "deposits__received_by__user"),
+        pk=pk,
+    )
+    can_manage_finance = _has_role(request.user, "Reception") or _has_role(
+        request.user, "Administrator"
+    )
+    can_discharge = (
+        _has_role(request.user, "Doctor")
+        or _has_role(request.user, "Administrator")
+        or _has_role(request.user, "Reception")
+    )
+
+    deposit_form = InpatientDepositForm() if can_manage_finance else None
+    discharge_form = (
+        DischargeForm(instance=admission)
+        if (can_discharge and admission.status == Admission.Status.ADMITTED)
+        else None
+    )
+
+    return render(
+        request,
+        "core/ipd/admission_detail.html",
+        {
+            "admission": admission,
+            "deposits": admission.deposits.all(),
+            "deposit_form": deposit_form,
+            "discharge_form": discharge_form,
+            "can_manage_finance": can_manage_finance,
+            "can_discharge": can_discharge,
+        },
+    )
+
+
+@permission_required("core.add_inpatientdeposit", raise_exception=True)
+def inpatient_deposit_create(request, admission_id):
+    if not (
+        _has_role(request.user, "Reception") or _has_role(request.user, "Administrator")
+    ):
+        raise PermissionDenied
+
+    admission = get_object_or_404(Admission, pk=admission_id)
+    if request.method == "POST":
+        form = InpatientDepositForm(request.POST)
+        if form.is_valid():
+            with transaction.atomic():
+                deposit = form.save(commit=False)
+                deposit.admission = admission
+                deposit.receipt_number = next_number("DEPOSIT")
+                deposit.received_by = StaffProfile.objects.filter(
+                    user=request.user
+                ).first()
+                deposit.save()
+
+                _audit_patient_change(
+                    request,
+                    admission.patient,
+                    "ipd.deposit_received",
+                    [
+                        f"receipt:{deposit.receipt_number}",
+                        f"amount:{deposit.amount}",
+                        f"method:{deposit.payment_method.name}",
+                        f"ref:{deposit.transaction_reference}",
+                    ],
+                )
+            messages.success(
+                request,
+                f"Advance deposit of ₹{deposit.amount} recorded successfully (Receipt #{deposit.receipt_number}).",
+            )
+        else:
+            messages.error(request, "Failed to record deposit. Please verify input fields.")
+
+    return redirect("admission_detail", pk=admission.pk)
+
+
+@permission_required("core.change_admission", raise_exception=True)
+def admission_discharge(request, pk):
+    if not (
+        _has_role(request.user, "Doctor")
+        or _has_role(request.user, "Administrator")
+        or _has_role(request.user, "Reception")
+    ):
+        raise PermissionDenied
+
+    admission = get_object_or_404(
+        Admission.objects.filter(status=Admission.Status.ADMITTED), pk=pk
+    )
+
+    if request.method == "POST":
+        form = DischargeForm(request.POST, instance=admission)
+        if form.is_valid():
+            with transaction.atomic():
+                adm = form.save(commit=False)
+                adm.discharged_at = timezone.now()
+                adm.save()
+
+                # Free the bed
+                bed = adm.bed
+                bed.status = Bed.Status.AVAILABLE
+                bed.save(update_fields=["status"])
+
+                _audit_patient_change(
+                    request,
+                    adm.patient,
+                    "ipd.patient_discharged",
+                    [
+                        f"adm:{adm.admission_number}",
+                        f"condition:{adm.discharge_condition}",
+                        f"status:{adm.status}",
+                    ],
+                )
+            messages.success(
+                request,
+                f"Patient {adm.patient.full_name} has been discharged. Bed {bed.bed_number} is now marked Available.",
+            )
+        else:
+            messages.error(request, "Failed to process discharge. Please check all fields.")
+
+    return redirect("admission_detail", pk=admission.pk)
+
