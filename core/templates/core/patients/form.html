@@ -57,37 +57,37 @@
     <div class="stitch-card-panel intake-stepper-card">
       <div class="stepper-header">
         <span class="stepper-title">Intake Progression</span>
-        <span class="stepper-badge">Step 1 of 3</span>
+        <span class="stepper-badge" id="intake-step-badge">Step 1 of 3</span>
       </div>
       <p class="stepper-sub">Standard OPD &amp; IPD Admissions Workflow</p>
 
       <div class="intake-steps-list">
         <!-- Step 1 Active -->
-        <div class="intake-step-item step-active">
-          <div class="step-num-icon">1</div>
+        <button type="button" class="intake-step-item step-active" data-step-target="1" onclick="switchIntakeStep(1)" style="all: unset; display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem 0.875rem; border-radius: var(--radius-lg); border: 1px solid #bae6fd; background: #f0f9ff; cursor: pointer; text-align: left; width: calc(100% - 1.75rem); transition: all 0.15s ease;">
+          <div class="step-num-icon" id="step-badge-1" style="background: var(--color-primary); color: #ffffff; box-shadow: 0 2px 6px rgba(2, 132, 199, 0.35);">1</div>
           <div class="step-content">
-            <div class="step-title">Patient Demographics</div>
-            <div class="step-desc">Core identity, DOB, &amp; legal name</div>
+            <div class="step-title" style="font-size: 0.8125rem; font-weight: 700; color: var(--color-secondary);">Patient Demographics</div>
+            <div class="step-desc" style="font-size: 0.6875rem; color: var(--color-text-muted); margin-top: 0.15rem;">Core identity, DOB, &amp; legal name</div>
           </div>
-        </div>
+        </button>
 
         <!-- Step 2 -->
-        <div class="intake-step-item">
-          <div class="step-num-icon">2</div>
+        <button type="button" class="intake-step-item" data-step-target="2" onclick="switchIntakeStep(2)" style="all: unset; display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem 0.875rem; border-radius: var(--radius-lg); border: 1px solid transparent; background: transparent; cursor: pointer; text-align: left; width: calc(100% - 1.75rem); transition: all 0.15s ease;">
+          <div class="step-num-icon" id="step-badge-2" style="background: #e2e8f0; color: #475569;">2</div>
           <div class="step-content">
-            <div class="step-title">Contact &amp; Address</div>
-            <div class="step-desc">Phone, Lucknow locality &amp; PIN</div>
+            <div class="step-title" style="font-size: 0.8125rem; font-weight: 700; color: var(--color-secondary);">Contact &amp; Address</div>
+            <div class="step-desc" style="font-size: 0.6875rem; color: var(--color-text-muted); margin-top: 0.15rem;">Phone, Email &amp; Lucknow locality</div>
           </div>
-        </div>
+        </button>
 
         <!-- Step 3 -->
-        <div class="intake-step-item">
-          <div class="step-num-icon">3</div>
+        <button type="button" class="intake-step-item" data-step-target="3" onclick="switchIntakeStep(3)" style="all: unset; display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem 0.875rem; border-radius: var(--radius-lg); border: 1px solid transparent; background: transparent; cursor: pointer; text-align: left; width: calc(100% - 1.75rem); transition: all 0.15s ease;">
+          <div class="step-num-icon" id="step-badge-3" style="background: #e2e8f0; color: #475569;">3</div>
           <div class="step-content">
-            <div class="step-title">Emergency &amp; Next of Kin</div>
-            <div class="step-desc">Primary proxy contact details</div>
+            <div class="step-title" style="font-size: 0.8125rem; font-weight: 700; color: var(--color-secondary);">Emergency &amp; Next of Kin</div>
+            <div class="step-desc" style="font-size: 0.6875rem; color: var(--color-text-muted); margin-top: 0.15rem;">Primary proxy contact details</div>
           </div>
-        </div>
+        </button>
       </div>
     </div>
 
@@ -163,9 +163,10 @@
       <form id="patient-form" method="post" novalidate>
         {% csrf_token %}
 
-        <!-- FIELDSET 1: Personal Demographics -->
-        <fieldset class="intake-fieldset">
-          <legend class="intake-legend">
+        <!-- STEP 1: Personal Demographics -->
+        <div id="step-section-1" class="step-section-panel">
+          <fieldset class="intake-fieldset">
+            <legend class="intake-legend">
             <div class="legend-icon">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </div>
@@ -233,8 +234,10 @@
             </div>
           </div>
         </fieldset>
+      </div>
 
-        <!-- FIELDSET 2: Contact & Residential Address -->
+      <!-- STEP 2: Contact & Residential Address -->
+      <div id="step-section-2" class="step-section-panel" style="display: none;">
         <fieldset class="intake-fieldset">
           <legend class="intake-legend">
             <div class="legend-icon" style="background: #e0f2fe; color: #0284c7;">
@@ -315,8 +318,10 @@
             </div>
           </div>
         </fieldset>
+      </div>
 
-        <!-- FIELDSET 3: Emergency Contact & Next of Kin -->
+      <!-- STEP 3: Emergency Contact & Next of Kin -->
+      <div id="step-section-3" class="step-section-panel" style="display: none;">
         <fieldset class="intake-fieldset">
           <legend class="intake-legend">
             <div class="legend-icon" style="background: #fef2f2; color: #ef4444;">
@@ -370,6 +375,7 @@
             </div>
           </div>
         </fieldset>
+      </div>
 
         <!-- Digital Consent & Indian DPDP Act Notification -->
         <div class="consent-compliance-bar">
@@ -380,25 +386,39 @@
           <span class="badge badge-success">Consent Verified</span>
         </div>
 
-        <!-- Sticky / Ground Action Bar -->
-        <div class="intake-actions-toolbar">
-          {% if not creating %}
-            <a href="{% url 'patient_detail' patient.pk %}" class="btn-stitch-secondary">Discard &amp; Cancel</a>
-          {% else %}
-            <a href="{% url 'patient_list' %}" class="btn-stitch-secondary">Cancel</a>
-          {% endif %}
+        <!-- Sticky / Ground Action Bar with Step Navigation -->
+        <div class="intake-actions-toolbar" style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--color-border);">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            {% if not creating %}
+              <a href="{% url 'patient_detail' patient.pk %}" class="btn-stitch-secondary">Discard &amp; Cancel</a>
+            {% else %}
+              <a href="{% url 'patient_list' %}" class="btn-stitch-secondary">Cancel</a>
+            {% endif %}
+            
+            <!-- Step Navigation: Previous Step Button -->
+            <button type="button" id="btn-prev-step" onclick="changeIntakeStep(-1)" class="btn-stitch-secondary" style="display: none; align-items: center; gap: 0.35rem;">
+              &larr; Previous Step
+            </button>
+          </div>
 
           <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <!-- Step Navigation: Next Step Button -->
+            <button type="button" id="btn-next-step" onclick="changeIntakeStep(1)" class="btn-stitch-primary" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.75rem; font-size: 0.9375rem;">
+              <span>Continue to Step 2</span>
+              &rarr;
+            </button>
+
+            <!-- Final Form Submission (Visible on Step 3 or when duplicate confirmation required) -->
             {% if creating and duplicates %}
-              <button type="submit" name="confirm_duplicate" value="yes" class="btn-stitch-primary" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);">
+              <button type="submit" name="confirm_duplicate" value="yes" id="btn-submit-duplicate" class="btn-stitch-primary" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);">
                 Register as a Separate Patient &rarr;
               </button>
-            {% else %}
-              <button type="submit" class="btn-stitch-primary" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); padding: 0.75rem 2rem; font-size: 0.9375rem;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>
-                {% if creating %}Register Patient to EMR &amp; Issue Token{% else %}Save Demographic Changes{% endif %}
-              </button>
             {% endif %}
+
+            <button type="submit" id="btn-submit-patient" class="btn-stitch-primary" style="display: none; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); padding: 0.75rem 2rem; font-size: 0.9375rem;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>
+              <span>{% if creating %}Register Patient to EMR &amp; Issue Token{% else %}Save Demographic Changes{% endif %}</span>
+            </button>
           </div>
         </div>
 
@@ -407,4 +427,119 @@
   </main>
 
 </div>
+
+<!-- Multi-Step Intake Progression Controller Script -->
+<script>
+  let currentIntakeStep = 1;
+  const totalIntakeSteps = 3;
+
+  function switchIntakeStep(stepNum) {
+    if (stepNum < 1 || stepNum > totalIntakeSteps) return;
+
+    // Validate required fields when advancing forward
+    if (stepNum > currentIntakeStep) {
+      if (currentIntakeStep === 1) {
+        const nameField = document.getElementById('id_full_name');
+        if (nameField && !nameField.value.trim()) {
+          nameField.focus();
+          nameField.classList.add('input-err');
+          return;
+        }
+      } else if (currentIntakeStep === 2) {
+        const phoneField = document.getElementById('id_phone');
+        if (phoneField && !phoneField.value.trim()) {
+          phoneField.focus();
+          phoneField.classList.add('input-err');
+          return;
+        }
+      }
+    }
+
+    currentIntakeStep = stepNum;
+
+    // 1. Show only current step panel, hide others
+    for (let i = 1; i <= totalIntakeSteps; i++) {
+      const panel = document.getElementById(`step-section-${i}`);
+      if (panel) {
+        panel.style.display = (i === currentIntakeStep) ? 'block' : 'none';
+      }
+
+      // Update sidebar step buttons styling
+      const stepBtn = document.querySelector(`button[data-step-target="${i}"]`);
+      const stepBadge = document.getElementById(`step-badge-${i}`);
+      if (stepBtn && stepBadge) {
+        if (i === currentIntakeStep) {
+          stepBtn.classList.add('step-active');
+          stepBtn.style.background = '#f0f9ff';
+          stepBtn.style.borderColor = '#bae6fd';
+          stepBadge.style.background = 'var(--color-primary)';
+          stepBadge.style.color = '#ffffff';
+          stepBadge.style.boxShadow = '0 2px 6px rgba(2, 132, 199, 0.35)';
+        } else if (i < currentIntakeStep) {
+          stepBtn.classList.remove('step-active');
+          stepBtn.style.background = '#f8fafc';
+          stepBtn.style.borderColor = '#e2e8f0';
+          stepBadge.style.background = '#059669';
+          stepBadge.style.color = '#ffffff';
+          stepBadge.style.boxShadow = 'none';
+        } else {
+          stepBtn.classList.remove('step-active');
+          stepBtn.style.background = 'transparent';
+          stepBtn.style.borderColor = 'transparent';
+          stepBadge.style.background = '#e2e8f0';
+          stepBadge.style.color = '#475569';
+          stepBadge.style.boxShadow = 'none';
+        }
+      }
+    }
+
+    // 2. Update step badge text
+    const badgeText = document.getElementById('intake-step-badge');
+    if (badgeText) {
+      badgeText.textContent = `Step ${currentIntakeStep} of ${totalIntakeSteps}`;
+    }
+
+    // 3. Update navigation buttons
+    const prevBtn = document.getElementById('btn-prev-step');
+    const nextBtn = document.getElementById('btn-next-step');
+    const submitBtn = document.getElementById('btn-submit-patient');
+
+    if (prevBtn) {
+      prevBtn.style.display = (currentIntakeStep > 1) ? 'inline-flex' : 'none';
+    }
+
+    if (nextBtn) {
+      if (currentIntakeStep < totalIntakeSteps) {
+        nextBtn.style.display = 'inline-flex';
+        nextBtn.querySelector('span').textContent = `Continue to Step ${currentIntakeStep + 1}`;
+      } else {
+        nextBtn.style.display = 'none';
+      }
+    }
+
+    if (submitBtn) {
+      submitBtn.style.display = (currentIntakeStep === totalIntakeSteps) ? 'inline-flex' : 'none';
+    }
+
+    window.scrollTo({ top: 120, behavior: 'smooth' });
+  }
+
+  function changeIntakeStep(delta) {
+    switchIntakeStep(currentIntakeStep + delta);
+  }
+
+  // Auto-switch to step if form has errors in that section
+  document.addEventListener('DOMContentLoaded', function() {
+    const step2HasErrors = document.querySelector('#step-section-2 .field-err-msg, #step-section-2 .input-err');
+    const step3HasErrors = document.querySelector('#step-section-3 .field-err-msg, #step-section-3 .input-err');
+    
+    if (step3HasErrors) {
+      switchIntakeStep(3);
+    } else if (step2HasErrors) {
+      switchIntakeStep(2);
+    } else {
+      switchIntakeStep(1);
+    }
+  });
+</script>
 {% endblock %}
