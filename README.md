@@ -1,7 +1,35 @@
 # Hospital Management System
 
-An outpatient hospital operations system for a single hospital. The application
-uses Django templates and the Django ORM; it does not connect to Supabase.
+A hospital operations system for a single hospital, covering OPD, IPD,
+pharmacy, and billing workflows. The application uses Django templates and the
+Django ORM backed by PostgreSQL.
+
+## Implemented modules
+
+| Module | Description |
+| :--- | :--- |
+| **Patients (OPD)** | Multi-step registration, auto-generated MRN, document vault uploads |
+| **Appointments** | Slot scheduling, doctor queues, no-show tracking |
+| **Consultations** | Clinical notes, vitals, diagnosis, follow-up dates |
+| **Prescriptions** | Digital prescriptions linked to pharmacy inventory |
+| **Pharmacy** | Batch inventory, dispensing from prescription, OTC sales, stock receipts |
+| **Billing** | Itemised invoices, multiple payment methods, receipts, voids, adjustments |
+| **Inpatient (IPD)** | Ward and bed management, admission dossiers, MLC flag, advance deposit ledger, discharge summaries |
+| **Patient Documents** | Scanned upload (prescription, lab report, insurance, photo ID) per patient |
+
+## Production deployment
+
+| Component | Details |
+| :--- | :--- |
+| **Edge / CDN** | Cloudflare Pages proxy (`vedant-hospital-app.pages.dev`) |
+| **Web origin** | Render web service, Python 3.12, Gunicorn + WhiteNoise |
+| **Database** | Supabase PostgreSQL (connection-pooler port 6543, `aws-0-ap-south-1`). `DATABASE_URL` is set in Render environment variables; it is not committed. All 12 core migrations are applied. |
+| **Error monitoring** | Sentry (`SENTRY_DSN` set in Render env) |
+| **Product analytics** | PostHog EU (`POSTHOG_KEY` set in Render env) |
+| **Traffic analytics** | Cloudflare Web Analytics beacon |
+
+> **Never commit `DATABASE_URL`, `DJANGO_SECRET_KEY`, or any other secret.**
+> Never share production credentials in reports, issues, or documentation.
 
 ## Development setup
 
@@ -31,6 +59,9 @@ development. `.env.example` contains only local placeholders. Set
 development. Set `DJANGO_ALLOWED_HOSTS` to a comma-separated host list when
 deploying.
 
+`CSRF_TRUSTED_ORIGINS` should include every origin that proxies requests to the
+Django origin (e.g. Cloudflare Pages). Set via `DJANGO_CSRF_TRUSTED_ORIGINS`.
+
 For PostgreSQL, use a URL such as:
 
 ```dotenv
@@ -59,6 +90,7 @@ credentials or public staff-registration page:
 
 ```sh
 python manage.py migrate
+python manage.py bootstrap_hospital
 python manage.py createsuperuser
 ```
 
@@ -68,9 +100,12 @@ server-side admin; deactivate accounts with Django's `is_active` field rather
 than deleting them. Local password-reset emails use the console backend. With
 `DJANGO_DEBUG=false`, SMTP is configured for Resend using `RESEND_KEY` and
 `RESEND_FROM_EMAIL`; set the latter to a verified sender before staging use. No
-email is sent by the test suite. Django's built-in login view does not
-rate-limit failures; configure and verify edge-level login rate limiting under
-KAN-16 before staging accounts are used. See [docs/security.md](docs/security.md).
+email is sent by the test suite.
+
+The application has server-side login throttling (5 failures per IP/username
+locks the pair for 10 minutes). Configure and verify edge-level rate limiting
+under KAN-16 before real patient data is handled.
+See [docs/security.md](docs/security.md).
 
 After creating the initial administrator, run `python manage.py bootstrap_hospital`
 to create the singleton hospital settings placeholder, four curated role groups,
@@ -83,10 +118,9 @@ Django Admin. See [docs/roles-and-permissions.md](docs/roles-and-permissions.md)
 Tax, discount, refund, and pharmacy pricing policies remain subject to the open
 decisions in `docs/decisions.md`.
 
-## Supabase
+## Known gaps before production use with real patient data
 
-Supabase is not configured or connected. Its intended role (if any), data access
-model, and security responsibilities remain an open product/architecture
-decision. Django and PostgreSQL are the application direction for this MVP;
-do not migrate or expose hospital data through Supabase until that decision is
-approved.
+- KAN-16: Edge-level rate limiting and security hardening not verified
+- KAN-18: Backup, restore, and operational runbook not completed
+- KAN-22: Operational dashboards and management reports not built
+- KAN-24: Infrastructure observability (alerts, uptime checks) not configured
