@@ -1,13 +1,241 @@
 {% extends "registration/base.html" %}
 
 {% block title %}Staff sign in{% endblock %}
-{% block content %}
-  <h1>Staff sign in</h1>
-  <form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <input type="hidden" name="next" value="{{ next }}">
-    <button type="submit">Sign in</button>
-  </form>
-  <p><a href="{% url 'password_reset' %}">Forgot password?</a></p>
+
+{% block auth_layout %}
+<div class="stitch-auth-container">
+  
+  <!-- Left Panel: Deep Navy Hero Brand Canvas -->
+  <div class="stitch-auth-hero">
+    <!-- Ambient Medical Glow Effects -->
+    <div class="stitch-hero-glow"></div>
+    <div class="stitch-hero-glow-blob1"></div>
+    <div class="stitch-hero-glow-blob2"></div>
+
+    <!-- Top Hospital Brand Badge -->
+    <div class="stitch-auth-hero-top">
+      <div class="stitch-brand-header">
+        <div class="stitch-cross-emblem">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M10.5 3.75a1.25 1.25 0 012.5 0V9.5h5.75a1.25 1.25 0 010 2.5H13v5.75a1.25 1.25 0 01-2.5 0V12H4.75a1.25 1.25 0 010-2.5h5.75V3.75z"/>
+          </svg>
+          <span class="stitch-ping-container">
+            <span class="stitch-ping-animate"></span>
+            <span class="stitch-ping-dot"></span>
+          </span>
+        </div>
+        <div>
+          <div class="stitch-brand-title-row">
+            <span class="stitch-brand-name">VEDANT HOSPITAL</span>
+            <span class="stitch-brand-tag">EHR Core v4.8</span>
+          </div>
+          <p class="stitch-brand-sub">Tertiary Healthcare &amp; Research Centre &bull; Lucknow</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center Hero Copy & Clinical Values -->
+    <div class="stitch-auth-hero-center">
+      <div class="stitch-pill-badge">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+        <span>Secure Clinical Operating System</span>
+        <span class="dot-separator">&bull;</span>
+        <span class="text-slate-300">OPD &bull; IPD &bull; ICU &bull; Emergency</span>
+      </div>
+
+      <h1 class="stitch-hero-heading">
+        Compassionate Care, <br>
+        <span class="stitch-heading-gradient">Clinical Excellence.</span>
+      </h1>
+
+      <p class="stitch-hero-lead">
+        Authorized gateway for doctors, nursing supervisors, diagnostics, and administrative staff at Vedant Hospital, Lucknow.
+      </p>
+
+      <!-- Key Clinical Metrics -->
+      <div class="stitch-hero-stats">
+        <div class="stitch-stat-box">
+          <div class="stat-number">450+</div>
+          <div class="stat-label">Critical Care Beds</div>
+        </div>
+        <div class="stitch-stat-box">
+          <div class="stat-number stat-emerald">24/7</div>
+          <div class="stat-label">Trauma &amp; Cath Lab</div>
+        </div>
+        <div class="stitch-stat-box">
+          <div class="stat-number stat-sky">99.98%</div>
+          <div class="stat-label">EMR Uptime</div>
+        </div>
+      </div>
+
+      <!-- Lucknow Location Card -->
+      <div class="stitch-location-badge">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+        <div>
+          <strong style="color: #f1f5f9;">Vedant Hospital Lucknow:</strong>
+          <span>Hardoi Road, Near Raj State, Kanpur Ring Road, Rajaji Puram, Lucknow-226017, UP</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Compliance and Accreditation Footer -->
+    <div class="stitch-auth-hero-bottom">
+      <div class="stitch-compliance-badges">
+        <div class="stitch-comp-item">
+          <span class="comp-check">&#10003;</span>
+          <div>
+            <div class="comp-name">NABH Accredited</div>
+            <div class="comp-desc">Excellence in Quality</div>
+          </div>
+        </div>
+        <div class="stitch-comp-item">
+          <span class="comp-lock">&#128274;</span>
+          <div>
+            <div class="comp-name">ISO 27001 / EHR-HL7</div>
+            <div class="comp-desc">256-Bit TLS Secured</div>
+          </div>
+        </div>
+      </div>
+      <div class="emergency-code">
+        Emergency Code: <span>102 / Ext. 99</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Panel: Pristine White Modern Clinical Login Form -->
+  <div class="stitch-auth-form-panel">
+    
+    <!-- Top Bar Navigation & System Status -->
+    <div class="stitch-form-top-nav">
+      <a href="{% url 'home' %}" class="stitch-back-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        Back to Hospital Main Portal
+      </a>
+      <div class="stitch-system-status">
+        <span class="status-live-dot"></span>
+        <span>EMR Server: <strong>Online</strong></span>
+      </div>
+    </div>
+
+    <!-- Center Card Form -->
+    <div class="stitch-form-card">
+      <div class="stitch-user-icon-badge">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </div>
+
+      <h1 class="stitch-form-title">Staff sign in</h1>
+      <p class="stitch-form-subtitle">
+        Sign in with your hospital assigned credentials or smart card ID to access patient records and clinical orders.
+      </p>
+
+      {% if form.non_field_errors %}
+        <div class="stitch-error-banner" role="alert">
+          {% for error in form.non_field_errors %}
+            <p>{{ error }}</p>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <form method="post" action="{% url 'login' %}" novalidate class="stitch-login-form">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+
+        <!-- Username / Staff ID -->
+        <div class="stitch-form-group">
+          <label for="id_username" class="stitch-label">
+            Username / Staff ID <span class="required-star">*</span>
+          </label>
+          <div class="stitch-input-wrapper">
+            <span class="stitch-input-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h10"/><path d="M7 12h10"/><path d="M7 17h6"/></svg>
+            </span>
+            <input 
+              type="text" 
+              name="username" 
+              id="id_username" 
+              autocomplete="username" 
+              required 
+              placeholder="e.g. DOC-LKO-4082 or admin"
+              value="{{ form.username.value|default_if_none:'' }}"
+              class="stitch-input {% if form.username.errors %}input-has-error{% endif %}"
+            >
+          </div>
+          {% if form.username.errors %}
+            <div class="field-error-text">{{ form.username.errors.0 }}</div>
+          {% else %}
+            <p class="stitch-input-hint">Use your registered 6-8 digit employee badge code or hospital username.</p>
+          {% endif %}
+        </div>
+
+        <!-- Password Field -->
+        <div class="stitch-form-group">
+          <div class="stitch-label-row">
+            <label for="id_password" class="stitch-label">
+              Password <span class="required-star">*</span>
+            </label>
+            <a href="{% url 'password_reset' %}" class="stitch-forgot-link">Forgot password?</a>
+          </div>
+          <div class="stitch-input-wrapper">
+            <span class="stitch-input-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </span>
+            <input 
+              type="password" 
+              name="password" 
+              id="id_password" 
+              autocomplete="current-password" 
+              required 
+              placeholder="Enter your clinical portal password"
+              class="stitch-input {% if form.password.errors %}input-has-error{% endif %}"
+            >
+            <button 
+              type="button" 
+              class="stitch-password-toggle" 
+              onclick="const p = document.getElementById('id_password'); p.type = p.type === 'password' ? 'text' : 'password';"
+              aria-label="Toggle password visibility"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          {% if form.password.errors %}
+            <div class="field-error-text">{{ form.password.errors.0 }}</div>
+          {% endif %}
+        </div>
+
+        <!-- Workstation Selector (Hospital Context) -->
+        <div class="stitch-form-group">
+          <label for="workstation-select" class="stitch-label">Assigned Workstation / Ward</label>
+          <div class="stitch-input-wrapper">
+            <select id="workstation-select" class="stitch-input" style="appearance: auto;">
+              <option>OPD Block B &mdash; Cardiology &amp; Internal Medicine</option>
+              <option>Emergency &amp; Trauma Care &mdash; Ground Floor</option>
+              <option>ICU &amp; CCU Complex &mdash; Level 3</option>
+              <option>Inpatient Surgical Suites (OT 1-8)</option>
+              <option>Central Pharmacy &amp; Cashier Desk</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Submit Button -->
+        <button type="submit" class="stitch-btn-login">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+          Sign in
+        </button>
+
+      </form>
+    </div>
+
+    <!-- Bottom Footer -->
+    <div class="stitch-form-footer">
+      <div>&copy; 2026 Vedant Hospital &amp; Research Institute, Lucknow.</div>
+      <div class="footer-links">
+        <span>IT Helpdesk: Ext 4004</span>
+        <span class="dot-separator">&bull;</span>
+        <span>NABH Certified EHR</span>
+      </div>
+    </div>
+
+  </div>
+
+</div>
 {% endblock %}
